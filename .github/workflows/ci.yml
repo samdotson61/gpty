@@ -1,0 +1,58 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # --- tmux per OS (the §5 contract is tested live against a real tmux) ---
+      - name: Install tmux (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y tmux
+
+      - name: Install tmux (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tmux
+
+      - name: Install tmux (Windows, MSYS2)
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          install: tmux
+          path-type: inherit
+
+      # setup-msys2 installs under RUNNER_TEMP, not C:\msys64, and plain run:
+      # steps don't get the msys2 shell PATH — point gpty straight at tmux.exe
+      # so the live conformance suite runs instead of silently skipping.
+      - name: Point gpty at the MSYS2 tmux (Windows)
+        if: runner.os == 'Windows'
+        run: echo "GPTY_TMUX=${{ steps.msys2.outputs.msys2-location }}\usr\bin\tmux.exe" >> $env:GITHUB_ENV
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./...
+
+      # Live conformance: exercise the tmux contract against the real binary.
+      - name: Live conformance
+        run: go test -tags live ./conformance/...
