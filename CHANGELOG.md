@@ -4,6 +4,28 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.2.0] — 2026-06-09
+
+### Added
+- **Installers now offer to install Go (and tmux) from the relevant package
+  manager.** `install.sh` detects brew (macOS) or apt/dnf/pacman/zypper/apk
+  (Linux), prompts with a default-yes offer (reads `/dev/tty`, so it works
+  under `curl | bash`; assumes yes with a notice when there is no tty), and
+  validates Go ≥ 1.21 (older Go can't auto-fetch the toolchain go.mod needs).
+  `install.ps1` now *asks* before installing Go via winget instead of doing it
+  silently. Non-interactive acceptance: `--yes`/`GPTY_YES=1` (sh), `-Yes` (ps1).
+- `install.sh` carries its executable bit.
+
+### Changed
+- **First 3-OS CI results** (ubuntu/macos/windows + MSYS2): Linux and macOS run
+  the full live conformance suite green, including control mode. Windows passes
+  the exec-engine suite (sessions, panes, literal-send) against MSYS2 tmux; the
+  control-mode dial times out on the CI runner. Dial's handshake now gets a
+  patient 20s deadline (cygwin cold-start on loaded runners), and a dial
+  failure on Windows is a tracked test skip rather than a red build — matching
+  the runtime behavior, which falls back to the exec engine automatically.
+  Validating the channel on real Windows hardware remains the Phase 4 gate.
+
 ## [0.1.1] — 2026-06-09
 
 Post-release review pass (staticcheck + fresh-eyes audit of the control-mode

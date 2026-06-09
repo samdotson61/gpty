@@ -9,10 +9,22 @@
   PATH. No WSL. Idempotent: re-running is safe.
 #>
 [CmdletBinding()]
-param([string]$Msys2Root = 'C:\msys64')
+param(
+    [string]$Msys2Root = 'C:\msys64',
+    [switch]$Yes   # answer yes to all install offers (non-interactive)
+)
 
 $ErrorActionPreference = 'Stop'
 function Info($m) { Write-Host "==> $m" -ForegroundColor Cyan }
+
+# Confirm-Install: yes/no offer with default yes. -Yes (or a non-interactive
+# host) assumes yes, matching install.sh's behavior.
+function Confirm-Install($question) {
+    if ($Yes) { return $true }
+    if (-not [Environment]::UserInteractive) { Info "(non-interactive - assuming yes: $question)"; return $true }
+    $ans = Read-Host "$question [Y/n]"
+    return ([string]::IsNullOrEmpty($ans) -or $ans -match '^[Yy]')
+}
 
 # 1. MSYS2
 if (-not (Test-Path "$Msys2Root\usr\bin\bash.exe")) {
@@ -39,7 +51,10 @@ function Resolve-Go {
 }
 $go = Resolve-Go
 if (-not $go) {
-    Info 'Go not found - installing via winget (GoLang.Go)...'
+    if (-not (Confirm-Install "Go not found - install it via winget (GoLang.Go)?")) {
+        throw 'Go is required to build gpty. Install it from https://go.dev/dl and re-run.'
+    }
+    Info 'Installing Go via winget (GoLang.Go)...'
     winget install --id GoLang.Go --accept-source-agreements --accept-package-agreements --disable-interactivity
     $go = Resolve-Go
     if (-not $go) { throw 'Go install did not produce go.exe. Install Go from https://go.dev/dl and re-run.' }

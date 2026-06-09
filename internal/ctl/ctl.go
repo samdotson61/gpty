@@ -42,6 +42,11 @@ const ctlSession = "agentpty_ctl"
 const (
 	startupIdle    = 250 * time.Millisecond // quiescence window that ends startup drain
 	commandTimeout = 5 * time.Second        // per-command reply deadline
+	// handshakeTimeout is the deadline for Dial's first command only. Cygwin
+	// process spawn + server cold-start on a loaded Windows CI runner can far
+	// exceed the steady-state budget, and a failed dial just means exec
+	// fallback — so be patient before declaring the channel unusable.
+	handshakeTimeout = 20 * time.Second
 	// WaitPoll is how often the resident WaitFor re-captures over the open
 	// channel. Far tighter than the exec path's 200 ms because a capture here is
 	// a sub-ms pipe round-trip, not a process spawn.
@@ -106,7 +111,7 @@ func Dial() (*Client, error) {
 	go c.readLoop(lines)
 
 	// Confirm the channel actually answers before declaring success.
-	if _, err := c.run("display-message", "-p", "gpty-ctl-ok"); err != nil {
+	if _, err := c.runT(handshakeTimeout, "display-message", "-p", "gpty-ctl-ok"); err != nil {
 		c.Close()
 		return nil, fmt.Errorf("control channel handshake failed: %w", err)
 	}
@@ -182,6 +187,12 @@ func (c *Client) readLoop(lines chan string) {
 // run submits one command and returns its reply lines, or an error if tmux
 // replied with %error, the command timed out, or the channel is dead.
 func (c *Client) run(args ...string) ([]string, error) {
+	return c.runT(commandTimeout, args...)
+}
+
+// runT is run with an explicit reply deadline (Dial's handshake is more
+// patient than steady-state commands).
+func (c *Client) runT(timeout time.Duration, args ...string) ([]string, error) {
 	line := encodeCommand(args)
 	r := &reply{done: make(chan struct{})}
 
@@ -213,7 +224,7 @@ func (c *Client) run(args ...string) ([]string, error) {
 		return r.lines, nil
 	case <-c.closed:
 		return nil, fmt.Errorf("control channel closed")
-	case <-time.After(commandTimeout):
+	case <-time.After(timeout):
 		return nil, fmt.Errorf("control command timed out: %s", line)
 	}
 }

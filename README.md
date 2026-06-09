@@ -62,8 +62,11 @@ gpty doctor         # verify tmux >= 3.2
 Installs MSYS2 + tmux, ensures Go, builds `gpty.exe` + `gmux.exe`, installs the
 tmux.conf (PowerShell-7 default panes), and puts them on PATH.
 
-Requirements: Go (to build), and tmux ≥ 3.2 (the installer handles it; `gpty
-doctor` checks it).
+Requirements: Go ≥ 1.21 (to build) and tmux ≥ 3.2 (runtime). If either is
+missing, the installers **offer to install it** via your package manager —
+winget on Windows; brew on macOS; apt/dnf/pacman/zypper/apk on Linux. Pass
+`--yes` (or set `GPTY_YES=1`) to `install.sh`, or `-Yes` to `install.ps1`, to
+accept all offers non-interactively. `gpty doctor` verifies the result.
 
 ## Use it
 
@@ -127,12 +130,13 @@ Sessions live under the `agent-pty-<name>` prefix on the default tmux socket, so
 
 ## Status
 
-**v0.1.0 — Unix-verified, Windows port included.** Built and tested live against
-real tmux on macOS (unit + conformance + benchmarks green; control mode end to
-end via MCP). The Windows path is fully implemented (it's the merge of the
-shipping winmux/win-pty code) and exercised in CI via MSYS2, but has not yet been
-re-validated by hand on a Windows box. See [CHANGELOG.md](CHANGELOG.md) for
-what's done and what's pending.
+**v0.2.0 — Unix-verified (local + CI), Windows exec-verified in CI.** Linux and
+macOS run the full live conformance suite green in CI; control mode is verified
+end to end on macOS (unit + conformance + benchmarks + MCP drive). On Windows,
+the exec engine (sessions, panes, literal-send) passes the live CI suite via
+MSYS2 tmux; the control-mode channel is pending validation on real Windows
+hardware — until then gpty automatically falls back to the exec engine there.
+See [CHANGELOG.md](CHANGELOG.md) for details.
 
 ## Credit
 
