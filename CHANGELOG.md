@@ -4,6 +4,30 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.1.1] — 2026-06-09
+
+Post-release review pass (staticcheck + fresh-eyes audit of the control-mode
+client, CLI plumbing, HTTP guard, and CI).
+
+### Fixed
+- **Control-mode reply-correlation shift on write failure.** If writing a
+  command to the `tmux -C` stdin failed, the already-enqueued reply stayed in
+  the FIFO queue, so the next command's `%begin` would pair with the orphan and
+  every later reply would correlate off by one. A broken stdin now tears the
+  channel down (readLoop fails all pending replies; callers fall back to exec).
+- **`gpty serve` logged "serving…" before the loopback guard ran**, printing a
+  misleading line when the bind was about to be refused. The log now comes from
+  `ServeHTTP` after validation passes.
+- **`gpty wait-for --timeout <garbage>` produced a 0s timeout** (instant
+  failure) instead of keeping the 10s default.
+- **Windows CI silently skipped the live conformance suite**: `setup-msys2`
+  installs under `RUNNER_TEMP` (not `C:\msys64`) and plain steps don't get the
+  msys2 PATH. The workflow now exports `GPTY_TMUX` from the action's location,
+  and the suite resolves tmux the way the product does (`platform.Bin()`)
+  instead of a bare PATH lookup.
+- `pasteBuf` moved next to its only consumer (the Windows literal-send path) —
+  flagged by staticcheck as dead code on Unix builds.
+
 ## [0.1.0] — 2026-06-09
 
 First public cut: the merge of [winmux](https://github.com/samdotson61/winmux)

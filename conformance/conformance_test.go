@@ -20,16 +20,20 @@ import (
 
 	"github.com/samdotson61/gpty/internal/ctl"
 	"github.com/samdotson61/gpty/internal/panes"
+	"github.com/samdotson61/gpty/internal/platform"
 	"github.com/samdotson61/gpty/internal/session"
 )
 
 func TestMain(m *testing.M) {
-	if _, err := exec.LookPath("tmux"); err != nil {
-		fmt.Fprintln(os.Stderr, "skipping: tmux not found on PATH")
+	// Resolve tmux the way the product does (GPTY_TMUX, PATH, then the OS
+	// default), so CI setups that install tmux off-PATH (e.g. the msys2 action
+	// on Windows) still exercise the suite instead of silently skipping.
+	if err := exec.Command(platform.Bin(), "-V").Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "skipping conformance: tmux not runnable at %q (%v)\n", platform.Bin(), err)
 		os.Exit(0)
 	}
 	code := m.Run()
-	_ = exec.Command("tmux", "kill-server").Run() // best-effort cleanup
+	_ = exec.Command(platform.Bin(), "kill-server").Run() // best-effort cleanup
 	os.Exit(code)
 }
 

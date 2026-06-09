@@ -4,6 +4,10 @@ package tmux
 
 import "strings"
 
+// pasteBuf is the dedicated tmux buffer used for the load-buffer/paste literal
+// trick (compat lock §4.3).
+const pasteBuf = "agentpty_io"
+
 // sendText types literal text on Windows via load-buffer(stdin)+paste-buffer,
 // never as send-keys args. This is win-pty's quoting-safe trick (compat lock
 // §4.3): the Windows->cygwin command-line round-trip mangles quotes in argv

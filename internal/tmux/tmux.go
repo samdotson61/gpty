@@ -20,10 +20,6 @@ import (
 	"github.com/samdotson61/gpty/internal/platform"
 )
 
-// pasteBuf is the dedicated tmux buffer used for the load-buffer/paste literal
-// trick on Windows (compat lock §4.3).
-const pasteBuf = "agentpty_io"
-
 // cmd builds a `tmux -u <args...>` command with the right environment.
 func cmd(interactive bool, args ...string) *exec.Cmd {
 	c := exec.Command(platform.Bin(), append([]string{"-u"}, args...)...)

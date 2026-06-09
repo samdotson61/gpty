@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -29,6 +30,11 @@ func ServeHTTP(eng engine.Engine, cfg HTTPConfig) error {
 		return fmt.Errorf("refusing to bind non-loopback address %q without a token; "+
 			"set GPTY_TOKEN (or --token), or bind 127.0.0.1 and tunnel in (ssh -R / tailscale / cloudflared)", cfg.Addr)
 	}
+	tokenState := "required"
+	if cfg.Token == "" {
+		tokenState = "disabled — loopback only"
+	}
+	fmt.Fprintf(os.Stderr, "gpty: serving MCP over http on %s (token %s)\n", cfg.Addr, tokenState)
 
 	srv := NewServer(eng)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)

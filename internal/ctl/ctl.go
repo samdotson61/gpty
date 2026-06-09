@@ -196,6 +196,12 @@ func (c *Client) run(args ...string) ([]string, error) {
 	_, werr := io.WriteString(c.stdin, line+"\n")
 	c.mu.Unlock()
 	if werr != nil {
+		// The write failed with r already enqueued. If the channel kept running,
+		// the NEXT command's %begin would pair with this orphan and every later
+		// reply would correlate off by one. A broken stdin means the channel is
+		// dead anyway — tear it down so readLoop fails all pending replies and
+		// callers fall back to the exec engine.
+		c.Close()
 		return nil, werr
 	}
 

@@ -186,15 +186,7 @@ func runServe(args []string) error {
 	}
 	eng, cleanup := buildEngine(boolFlag(opts, "no-ctl"))
 	defer cleanup()
-	fmt.Fprintf(os.Stderr, "gpty: serving MCP over http on %s (token %s)\n", addr, tokenState(token))
 	return mcpserv.ServeHTTP(eng, mcpserv.HTTPConfig{Addr: addr, Token: token})
-}
-
-func tokenState(t string) string {
-	if t == "" {
-		return "disabled — loopback only"
-	}
-	return "required"
 }
 
 // --- helpers ----------------------------------------------------------------
@@ -285,7 +277,9 @@ func cliWaitFor(eng engine.Engine, args []string) error {
 	}
 	timeout := 10.0
 	if v := opts["timeout"]; v != "" {
-		timeout, _ = strconv.ParseFloat(v, 64)
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			timeout = f
+		}
 	}
 	snap, err := eng.WaitFor(pos[0], pos[1], timeout)
 	if err != nil {
