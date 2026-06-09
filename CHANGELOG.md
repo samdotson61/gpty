@@ -4,6 +4,17 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.2.1] — 2026-06-09
+
+### Fixed
+- **Server startup no longer blocks on the control-mode dial.** `NewAccel` now
+  dials in the background: `gpty mcp`/`serve` start instantly on the exec
+  engine and upgrade to the control channel when it connects. On hosts where
+  the channel never comes up (cygwin tmux today), the first 0.2.0 CI run showed
+  startup would have stalled for the full 20s handshake deadline; it now costs
+  nothing, and after 3 failed dial attempts gpty logs once and stays on exec
+  for the life of the process.
+
 ## [0.2.0] — 2026-06-09
 
 ### Added

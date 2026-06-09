@@ -1,12 +1,20 @@
 package ctl
 
 import (
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/samdotson61/gpty/internal/engine"
 	"github.com/samdotson61/gpty/internal/session"
 )
+
+// maxDialFailures is how many consecutive dial failures we tolerate before
+// giving up on control mode for this process and staying on the exec engine.
+// On hosts where the channel never comes up (e.g. cygwin tmux today), this
+// stops a background goroutine from respawning tmux -C clients forever.
+const maxDialFailures = 3
 
 // Accel is the resident engine: it embeds the exec engine and overrides only
 // the hot reads/sends to use the control channel, falling back to exec whenever
@@ -20,27 +28,32 @@ type Accel struct {
 	mu        sync.RWMutex
 	client    *Client
 	redialing bool
+	gaveUp    bool
 	stop      chan struct{}
 }
 
-// NewAccel dials a control client and wraps base. Returns an error (and leaves
-// the caller to use base directly) if the channel can't be established.
-func NewAccel(base engine.Engine) (*Accel, error) {
-	cl, err := Dial()
-	if err != nil {
-		return nil, err
-	}
-	return &Accel{Engine: base, client: cl, stop: make(chan struct{})}, nil
+// NewAccel wraps base with a control-mode accelerator. It returns immediately:
+// the channel is dialed in the background, ops use the exec base until it's up,
+// and if dialing keeps failing (maxDialFailures) the process stays on exec for
+// good. This keeps server startup instant even on hosts where the dial would
+// block for the full handshake deadline before failing (cygwin tmux today).
+func NewAccel(base engine.Engine) *Accel {
+	a := &Accel{Engine: base, stop: make(chan struct{})}
+	a.triggerRedial()
+	return a
 }
 
-// get returns a healthy client, or nil (triggering a background redial) when
-// the channel is down — callers fall back to exec on nil.
+// get returns a healthy client, or nil (triggering a background redial unless
+// we've given up) — callers fall back to exec on nil.
 func (a *Accel) get() *Client {
 	a.mu.RLock()
-	cl := a.client
+	cl, gaveUp := a.client, a.gaveUp
 	a.mu.RUnlock()
 	if cl != nil && cl.Healthy() {
 		return cl
+	}
+	if gaveUp {
+		return nil
 	}
 	a.triggerRedial()
 	return nil
@@ -48,7 +61,7 @@ func (a *Accel) get() *Client {
 
 func (a *Accel) triggerRedial() {
 	a.mu.Lock()
-	if a.redialing {
+	if a.redialing || a.gaveUp {
 		a.mu.Unlock()
 		return
 	}
@@ -56,15 +69,26 @@ func (a *Accel) triggerRedial() {
 	a.mu.Unlock()
 
 	go func() {
+		failures := 0
 		for {
 			select {
 			case <-a.stop:
 				return
 			default:
 			}
-			if cl, err := Dial(); err == nil {
+			cl, err := Dial()
+			if err == nil {
 				a.mu.Lock()
 				a.client = cl
+				a.redialing = false
+				a.mu.Unlock()
+				return
+			}
+			failures++
+			if failures >= maxDialFailures {
+				fmt.Fprintf(os.Stderr, "gpty: control mode unavailable after %d attempts (%v); staying on the exec engine\n", failures, err)
+				a.mu.Lock()
+				a.gaveUp = true
 				a.redialing = false
 				a.mu.Unlock()
 				return

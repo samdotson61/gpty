@@ -152,18 +152,15 @@ Env: GPTY_TMUX (tmux path), MSYS2_ROOT (Windows, default C:\msys64), GPTY_TOKEN 
 // --- resident server modes --------------------------------------------------
 
 // buildEngine returns the resident engine and a cleanup func. With control mode
-// enabled (default) it wraps exec in a control-mode accelerator; on dial
-// failure it logs and falls back to plain exec so the server still starts.
+// enabled (default) it wraps exec in a control-mode accelerator that dials in
+// the background — the server starts instantly on the exec engine and upgrades
+// to the channel when (if) it connects.
 func buildEngine(noCtl bool) (engine.Engine, func()) {
 	base := engine.Exec{}
 	if noCtl {
 		return base, func() {}
 	}
-	acc, err := ctl.NewAccel(base)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gpty: control mode unavailable (%v); using exec fallback\n", err)
-		return base, func() {}
-	}
+	acc := ctl.NewAccel(base)
 	return acc, acc.Close
 }
 
