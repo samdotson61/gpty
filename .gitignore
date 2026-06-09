@@ -1,0 +1,16 @@
+# Build output
+/gpty
+/gmux
+/gpty.exe
+/gmux.exe
+/dist/
+*.exe
+
+# Go
+/vendor/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/

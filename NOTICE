@@ -1,0 +1,30 @@
+gpty
+====
+
+gpty is the successor to two earlier projects by Sam Dotson, merged into one
+cross-platform Go toolset that drives a real C tmux:
+
+  - winmux   https://github.com/samdotson61/winmux   (native Windows tmux + wmux CLI)
+  - win-pty  https://github.com/samdotson61/win-pty   (agent-pty for Windows, in Go)
+
+Lineage and credit
+-------------------
+The agent-pty concept — a persistent, name-addressable PTY session abstraction
+(spawn / send / snapshot / wait_for) that lets an LLM agent drive a terminal —
+originates with:
+
+    AakeshF — https://github.com/AakeshF/agent-pty
+
+gpty re-implements that idea natively in Go over tmux, with native Windows
+(MSYS2) support, PowerShell-7 panes, a tmux control-mode engine, and local
+(stdio) + cloud (HTTP) MCP transports. The Go rewrite and the Windows port are
+by Sam Dotson.
+
+The upstream agent-pty project does not carry an explicit license; gpty's Go
+implementation is an independent reimplementation of the design/API and claims
+no rights over the upstream code. The MCP tool names (pty_spawn, pty_send, …)
+and the agent-pty-<name> session prefix are preserved deliberately so gpty is a
+drop-in upgrade for existing win-pty setups. If you intend to reuse the upstream
+Python code, please consult the original author regarding licensing.
+
+gpty itself is released under the MIT License (see LICENSE).
