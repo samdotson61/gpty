@@ -4,6 +4,26 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.5.0] — 2026-06-10
+
+### Changed
+- **MCP tool definitions slimmed ~30%** — they ride in the context window of
+  every agent session that registers gpty, so wording is a token budget, not
+  documentation. `tools/list` payload: 6,215 → 4,518 chars (~1,554 → ~1,130
+  tokens). Same 15 tools, same frozen names, same behavior; the
+  anti-hallucination guard rails survive in compressed form (pty_spawn still
+  says a session is invisible to gmux watchers, pane_split still reports the
+  attached-client count). `TestToolBudget` pins the ceiling (5,000 chars
+  total, 200 per description) over an in-memory MCP client, so the
+  definitions can't creep back toward documentation.
+
+### Added
+- **`--tools` filter on `gpty mcp` and `gpty serve`** for a much bigger cut
+  when an agent only needs part of the surface: `all` (default), `session`
+  (pty_* only — 1,713 chars, ~430 tokens), `panes` (pane_* only), or a
+  comma-separated list of exact tool names. Unknown names are an error so a
+  typo can't silently drop a tool.
+
 ## [0.4.0] — 2026-06-10
 
 ### Added

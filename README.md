@@ -82,6 +82,16 @@ the command): `pty_spawn`, `pty_send`, `pty_snapshot`, `pty_wait_for`,
 `pane_capture`, `pane_list`, `pane_info`, `pane_kill`, `pane_select`,
 `pane_resize`, `pane_layout`.
 
+Tool definitions are kept terse — they sit in the agent's context window for
+the whole session (~1,130 tokens for all 15). To spend less, expose only what
+the agent needs with `--tools`:
+
+```sh
+claude mcp add gpty -- gpty mcp --tools session   # pty_* only  (~430 tokens)
+claude mcp add gpty -- gpty mcp --tools panes     # pane_* only (~710 tokens)
+gpty mcp --tools pty_send,pty_snapshot,pane_split # or an exact list
+```
+
 **As a cloud / remote agent, over MCP HTTP:**
 
 ```sh

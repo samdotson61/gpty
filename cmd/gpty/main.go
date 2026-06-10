@@ -125,8 +125,10 @@ func main() {
 const usage = `gpty — agent terminal control over tmux (Windows / macOS / Linux)
 
  Servers (for agents):
-  gpty mcp [--no-ctl]                  MCP server over stdio (local agents)
-  gpty serve [--addr H:P] [--token T]  MCP server over streamable HTTP (cloud agents)
+  gpty mcp [--no-ctl] [--tools T]      MCP server over stdio (local agents)
+  gpty serve [--addr H:P] [--token T] [--tools T]   MCP over streamable HTTP (cloud agents)
+    --tools: all (default) | session (pty_* only) | panes (pane_* only) |
+             comma-separated tool names — fewer tools = less agent context
 
  Sessions (background, addressable by name):
   gpty spawn <name> [--cmd C] [--cwd D] [--cols N] [--rows N]
@@ -175,14 +177,22 @@ func buildEngine(noCtl bool) (engine.Engine, func()) {
 }
 
 func runMCP(args []string) error {
-	opts, _ := parseOpts(args, map[string]bool{})
+	opts, _ := parseOpts(args, map[string]bool{"tools": true})
+	allow, err := mcpserv.ParseToolFilter(opts["tools"])
+	if err != nil {
+		return err
+	}
 	eng, cleanup := buildEngine(boolFlag(opts, "no-ctl"))
 	defer cleanup()
-	return mcpserv.ServeStdio(eng)
+	return mcpserv.ServeStdio(eng, allow)
 }
 
 func runServe(args []string) error {
-	opts, _ := parseOpts(args, map[string]bool{"addr": true, "token": true})
+	opts, _ := parseOpts(args, map[string]bool{"addr": true, "token": true, "tools": true})
+	allow, err := mcpserv.ParseToolFilter(opts["tools"])
+	if err != nil {
+		return err
+	}
 	addr := opts["addr"]
 	if addr == "" {
 		addr = "127.0.0.1:7683"
@@ -193,7 +203,7 @@ func runServe(args []string) error {
 	}
 	eng, cleanup := buildEngine(boolFlag(opts, "no-ctl"))
 	defer cleanup()
-	return mcpserv.ServeHTTP(eng, mcpserv.HTTPConfig{Addr: addr, Token: token})
+	return mcpserv.ServeHTTP(eng, mcpserv.HTTPConfig{Addr: addr, Token: token, Allow: allow})
 }
 
 // --- helpers ----------------------------------------------------------------

@@ -14,8 +14,9 @@ import (
 
 // HTTPConfig configures the streamable-HTTP transport for cloud/remote agents.
 type HTTPConfig struct {
-	Addr  string // e.g. 127.0.0.1:7683
-	Token string // bearer token; required for any non-loopback bind
+	Addr  string            // e.g. 127.0.0.1:7683
+	Token string            // bearer token; required for any non-loopback bind
+	Allow func(string) bool // tool filter (nil = all tools)
 }
 
 // ServeHTTP runs the MCP server over streamable HTTP. It refuses to bind a
@@ -36,7 +37,7 @@ func ServeHTTP(eng engine.Engine, cfg HTTPConfig) error {
 	}
 	fmt.Fprintf(os.Stderr, "gpty: serving MCP over http on %s (token %s)\n", cfg.Addr, tokenState)
 
-	srv := NewServer(eng)
+	srv := NewServer(eng, cfg.Allow)
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 
 	mux := http.NewServeMux()
