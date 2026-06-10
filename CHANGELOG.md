@@ -130,5 +130,6 @@ module over C tmux, per [docs/build-plan.md](docs/build-plan.md).
   a fast capture-poll over the open channel (~25 ms) — far better than the exec
   200 ms poll, but not yet the push-based path. `%output` framing is parsed and
   consumed; wiring it to per-session waits is future work.
-- Deprecation banners on winmux/win-pty; goreleaser multi-target release
-  (build-plan Phase 6).
+- Deprecation banners on winmux/win-pty *(done 2026-06-10: both repos carry a
+  README deprecation banner pointing here and are archived on GitHub)*;
+  goreleaser multi-target release (build-plan Phase 6).
