@@ -4,6 +4,27 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.4.0] — 2026-06-10
+
+### Added
+- **Type `tmux`, get gmux.** The installers register gmux under the name
+  `tmux` (busybox-style: one binary, dispatched on the name it was invoked
+  under), so `tmux new -t sesh` opens a gmux session named `sesh`, `tmux ls` /
+  `tmux attach -t sesh` / `tmux kill -t sesh` carry gmux's semantics, a bare
+  `tmux` opens a new attached session, and **every other tmux command still
+  reaches the real tmux** through gmux's passthrough (`tmux -V`,
+  `tmux list-windows`, …). Windows installs the alias by default (there is no
+  native tmux on PATH to shadow); on macOS/Linux it's opt-in via
+  `install.sh --tmux-alias` / `GPTY_TMUX_ALIAS=1` since it can shadow the
+  system tmux depending on PATH order.
+- **Recursion guard in tmux resolution.** With a `tmux` alias on PATH,
+  `platform.Bin()`'s PATH lookup would have found the alias and made
+  gpty/gmux exec themselves forever. Resolution now skips any candidate in
+  the running executable's own directory (where the alias lives by
+  contract) and scans the rest of PATH, then falls back to the OS default.
+  `$GPTY_TMUX` still overrides everything. Covered by a unit test that
+  plants a fake alias next to the test binary.
+
 ## [0.3.0] — 2026-06-10
 
 ### Added

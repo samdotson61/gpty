@@ -8,7 +8,12 @@
 # Idempotent: re-running is safe.
 #
 # Flags / env:
-#   --yes | GPTY_YES=1   answer yes to all install offers (non-interactive)
+#   --yes | GPTY_YES=1              answer yes to all install offers (non-interactive)
+#   --tmux-alias | GPTY_TMUX_ALIAS=1  also link gmux as `tmux` in the bin dir
+#                                   (gmux commands by tmux's name; everything
+#                                   else still reaches the real tmux). Opt-in
+#                                   on Unix because it can shadow the system
+#                                   tmux depending on PATH order.
 #   GPTY_BIN=<dir>       install destination (default /usr/local/bin or ~/.local/bin)
 set -euo pipefail
 
@@ -16,7 +21,14 @@ info() { printf '==> %s\n' "$*"; }
 err()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 ASSUME_YES="${GPTY_YES:-}"
-for a in "$@"; do [[ "$a" == "--yes" || "$a" == "-y" ]] && ASSUME_YES=1; done
+TMUX_ALIAS="${GPTY_TMUX_ALIAS:-}"
+# (case, not `[[ ]] &&`: under set -e a non-matching && list would abort)
+for a in "$@"; do
+    case "$a" in
+        --yes|-y)     ASSUME_YES=1 ;;
+        --tmux-alias) TMUX_ALIAS=1 ;;
+    esac
+done
 
 # confirm <question> — yes/no with default yes. Reads /dev/tty so it still
 # prompts under `curl | bash`; with no usable tty (CI), it assumes yes, same as
@@ -121,6 +133,13 @@ info "Building gpty + gmux (${VERSION})..."
 go build -ldflags "$LDFLAGS" -o "$BIN/gpty" ./cmd/gpty
 go build -ldflags "$LDFLAGS" -o "$BIN/gmux" ./cmd/gmux
 info "Installed: $BIN/gpty, $BIN/gmux"
+
+# Optional `tmux` alias: gmux dispatches on its invoked name, and gpty/gmux
+# skip this alias when resolving the real tmux, so it cannot recurse.
+if [[ -n "$TMUX_ALIAS" ]]; then
+    ln -sf "$BIN/gmux" "$BIN/tmux"
+    info "Installed tmux alias: $BIN/tmux -> gmux (shadows the system tmux while $BIN precedes it on PATH)"
+fi
 
 info "Installing tmux.conf..."
 "$BIN/gpty" setup >/dev/null || info "(gpty setup reported a warning; check 'gpty setup' output)"

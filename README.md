@@ -127,6 +127,22 @@ gmux attach -t work
 gmux kill -t work
 ```
 
+**Prefer typing `tmux`?** The installers also register gmux under the name
+`tmux` (one binary, dispatched on its invoked name) — by default on Windows,
+where there is no native tmux on PATH to shadow, and opt-in on macOS/Linux
+(`./install.sh --tmux-alias`):
+
+```sh
+tmux new -t sesh        # = gmux new -t sesh (opens a gmux session "sesh")
+tmux ls                 # = gmux ls
+tmux                    # bare: new attached session, like the real thing
+tmux -V                 # anything gmux doesn't define passes through
+tmux list-windows       #   to the REAL tmux, unchanged
+```
+
+gpty and gmux resolve the *real* tmux around this alias (a PATH hit in their
+own install dir is skipped), so the passthrough cannot recurse into itself.
+
 ## How it fits together
 
 ```

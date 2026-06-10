@@ -21,6 +21,16 @@ func defaultBin() string {
 	return filepath.Join(root, `usr\bin\tmux.exe`)
 }
 
+// executableIn returns dir\name.exe if it exists (tmux on Windows is always
+// the MSYS2 tmux.exe; no PATHEXT subtleties apply).
+func executableIn(dir, name string) string {
+	p := filepath.Join(dir, name+".exe")
+	if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		return p
+	}
+	return ""
+}
+
 // osEnv ports wmux's buildEnv. It always sets a UTF-8 locale and prepends the
 // exe dir + tmux dir to PATH, then applies MSYS=noglob ONLY for non-interactive
 // commands.

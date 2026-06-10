@@ -17,16 +17,51 @@ import (
 
 // Bin locates the tmux binary: $GPTY_TMUX (or the legacy $WMUX_TMUX), then
 // PATH, then the OS default (MSYS2 on Windows, plain "tmux" elsewhere).
+//
+// A PATH hit inside our own install dir is skipped: the installers register
+// gmux under the name `tmux` (busybox-style alias), and resolving that here
+// would make gpty/gmux exec themselves forever. The alias lives next to the
+// real binaries by contract, so "same dir as the running executable" is the
+// recursion guard.
 func Bin() string {
 	for _, k := range []string{"GPTY_TMUX", "WMUX_TMUX"} {
 		if v := os.Getenv(k); v != "" {
 			return v
 		}
 	}
-	if p, err := exec.LookPath("tmux"); err == nil {
+	if p, err := exec.LookPath("tmux"); err == nil && !isExeDir(filepath.Dir(p)) {
+		return p
+	}
+	if p := lookPathSkipExeDir("tmux"); p != "" {
 		return p
 	}
 	return defaultBin()
+}
+
+// lookPathSkipExeDir scans PATH for name, skipping the running executable's
+// own directory (where the `tmux` alias of gmux lives).
+func lookPathSkipExeDir(name string) string {
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" || isExeDir(dir) {
+			continue
+		}
+		if p := executableIn(dir, name); p != "" {
+			return p
+		}
+	}
+	return ""
+}
+
+// isExeDir reports whether dir is the running executable's directory.
+// os.SameFile handles case differences and links.
+func isExeDir(dir string) bool {
+	ed := exeDir()
+	if ed == "" || dir == "" {
+		return false
+	}
+	a, err1 := os.Stat(dir)
+	b, err2 := os.Stat(ed)
+	return err1 == nil && err2 == nil && os.SameFile(a, b)
 }
 
 // Env returns the environment for invoking tmux.

@@ -71,6 +71,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'go build (gmux) failed.' }
 } finally { Pop-Location }
 
+# 3b. tmux alias: gmux doubles as `tmux` (same binary, dispatches on the name
+# it was invoked under), so `tmux new -t sesh` opens a gmux session and every
+# other tmux command still reaches the real MSYS2 tmux. Nothing native is
+# shadowed — Windows has no tmux on PATH; gpty/gmux skip this alias when
+# resolving the real tmux, so it cannot recurse.
+Info 'Installing tmux alias (tmux.exe = gmux)...'
+Copy-Item (Join-Path $PSScriptRoot 'gmux.exe') (Join-Path $PSScriptRoot 'tmux.exe') -Force
+
 # 4. Put this folder on the user PATH (so `gpty` / `gmux` resolve).
 $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if (($userPath -split ';') -notcontains $PSScriptRoot) {
@@ -90,8 +98,9 @@ Info 'Installing tmux.conf (PowerShell-7 default panes)...'
 # 6. Report
 & (Join-Path $PSScriptRoot 'gpty.exe') doctor | Out-Host
 Write-Host ""
-Write-Host "Installed gpty + gmux. Try:" -ForegroundColor Green
+Write-Host "Installed gpty + gmux (+ tmux alias). Try:" -ForegroundColor Green
 Write-Host "    gmux new -t test                  # new PowerShell-7 session, attached"
+Write-Host "    tmux new -t test                  # same thing - tmux is gmux here"
 Write-Host "    claude mcp add gpty -- gpty mcp    # register with Claude Code (local)"
 if ($pathChanged) {
     Write-Host ""

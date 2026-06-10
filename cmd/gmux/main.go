@@ -9,11 +9,18 @@
 //	gmux attach -t <name>                attach to a session
 //	gmux kill -t <name>                  kill a session
 //	gmux <tmux args...>                  passed straight through to tmux
+//
+// The installers also register this binary under the name `tmux` (busybox-style
+// alias; Windows default, `install.sh --tmux-alias` on Unix), so `tmux new -t
+// sesh` opens a gmux session — internal/platform resolves the REAL tmux around
+// the alias, so the passthrough can't recurse.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/samdotson61/gpty/internal/buildinfo"
 	"github.com/samdotson61/gpty/internal/tmux"
@@ -26,10 +33,24 @@ const usage = `gmux — native tmux for humans (PowerShell-7 panes on Windows).
   gmux kill -t <name>                  kill a session
   gmux version
   gmux <tmux args...>                  anything else is passed to tmux
+Installed as 'tmux' (alias), the same commands apply: tmux new -t sesh.
 Env: GPTY_TMUX (tmux path), MSYS2_ROOT (Windows, default C:\msys64).`
+
+// invokedAsTmux reports whether this binary was invoked under the name "tmux"
+// — the alias the installers create. Same dispatch either way; only the
+// zero-argument default differs.
+func invokedAsTmux(argv0 string) bool {
+	base := strings.ToLower(filepath.Base(argv0))
+	return strings.TrimSuffix(base, ".exe") == "tmux"
+}
 
 func main() {
 	if len(os.Args) < 2 {
+		if invokedAsTmux(os.Args[0]) {
+			// Bare `tmux` opens a new attached session, like the real thing
+			// (a PowerShell-7 pane on Windows, per the gpty tmux.conf).
+			os.Exit(tmux.Interactive())
+		}
 		fmt.Println(usage)
 		os.Exit(0)
 	}
