@@ -16,6 +16,7 @@ import (
 	"github.com/samdotson61/gpty/internal/ctl"
 	"github.com/samdotson61/gpty/internal/engine"
 	"github.com/samdotson61/gpty/internal/mcpserv"
+	"github.com/samdotson61/gpty/internal/tmux"
 )
 
 func main() {
@@ -109,7 +110,10 @@ func main() {
 	case "-h", "--help", "help":
 		fmt.Println(usage)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n%s\n", sub, usage)
+		if tmux.IsCommand(sub) {
+			os.Exit(tmux.Passthrough(sub, args))
+		}
+		fmt.Fprintf(os.Stderr, "unknown command %q (not a gpty command or tmux command/alias)\n%s\n", sub, usage)
 		os.Exit(2)
 	}
 	if err != nil {
@@ -147,6 +151,12 @@ const usage = `gpty — agent terminal control over tmux (Windows / macOS / Linu
   gpty doctor                          check tmux is present and >= 3.2
   gpty setup [--dir D]                 install the tmux.conf (PowerShell-7 panes on Windows)
   gpty version
+
+ tmux passthrough:
+  gpty <tmux-command> [args...]        every tmux command and alias runs as-is
+                                       (list-windows, send-keys, splitw, kill-server, ...)
+                                       gpty's own names above win on collision; use the
+                                       full tmux name there (send-keys, list-sessions)
 Env: GPTY_TMUX (tmux path), MSYS2_ROOT (Windows, default C:\msys64), GPTY_TOKEN (serve auth).`
 
 // --- resident server modes --------------------------------------------------

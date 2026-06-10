@@ -4,6 +4,24 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.3.0] — 2026-06-10
+
+### Added
+- **Every tmux command and alias now works as a gpty subcommand.** A subcommand
+  gpty doesn't recognize itself is checked against the installed tmux's live
+  command table (`list-commands`, answered without a running server) and, if
+  it's a real command or alias, forwarded as-is: `gpty list-windows`,
+  `gpty send-keys -t s ls Enter`, `gpty splitw -h`, `gpty kill-server`, … all
+  behave exactly like the bare `tmux` invocation, exit code included.
+  Attaching commands (`attach`/`attach-session`, and `new`/`new-session`
+  without `-d`) get the interactive environment so Windows attach works
+  (cygwin pcon); everything else keeps `MSYS=noglob` so format-string
+  arguments survive cygwin. Typos still get gpty's own unknown-command error,
+  not a tmux one. gpty's own names win on collision — `send`, `ls`, and
+  `wait`/`wait-for` stay gpty commands; use the full tmux names
+  (`send-keys`, `list-sessions`) to pass through. `gmux` already forwarded
+  unknown commands blindly; `gpty` now matches it, with validation.
+
 ## [0.2.1] — 2026-06-09
 
 ### Fixed

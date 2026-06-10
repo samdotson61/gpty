@@ -103,6 +103,21 @@ gpty list
 gpty kill build
 ```
 
+**Any tmux command works too.** A subcommand gpty doesn't recognize is checked
+against the installed tmux's command table and, if real, forwarded as-is —
+every tmux command and alias is a gpty alias:
+
+```sh
+gpty list-windows -t agent-pty-build    # any tmux command...
+gpty splitw -h                          # ...or tmux alias
+gpty send-keys -t agent-pty-build ls Enter
+gpty kill-server
+```
+
+gpty's own names win on collision (`send`, `ls`, `wait`); use the full tmux
+name there (`send-keys`, `list-sessions`). Typos still get gpty's
+unknown-command error, not a confusing tmux one.
+
 **As a human:**
 
 ```sh

@@ -23,6 +23,7 @@ import (
 	"github.com/samdotson61/gpty/internal/panes"
 	"github.com/samdotson61/gpty/internal/platform"
 	"github.com/samdotson61/gpty/internal/session"
+	"github.com/samdotson61/gpty/internal/tmux"
 )
 
 func TestMain(m *testing.M) {
@@ -211,6 +212,29 @@ func TestCtlEngine(t *testing.T) {
 	}
 	if strings.TrimSpace(execSnap) != strings.TrimSpace(ctlSnap) {
 		t.Fatalf("exec and ctl captures disagree:\n--exec--\n%s\n--ctl--\n%s", execSnap, ctlSnap)
+	}
+}
+
+// --- tmux passthrough command table (the CLI alias surface) ------------------
+
+// The gpty CLI forwards unknown subcommands when they appear in the live
+// command table; this pins the `list-commands -F` query and parse against
+// every CI tmux version.
+func TestTmuxCommandTable(t *testing.T) {
+	set, err := tmux.Commands()
+	if err != nil {
+		t.Fatalf("tmux.Commands: %v", err)
+	}
+	for _, want := range []string{
+		"attach-session", "attach", "send-keys", "send", "list-sessions", "ls",
+		"kill-server", "split-window", "splitw", "list-commands",
+	} {
+		if !set[want] {
+			t.Errorf("command table missing %q", want)
+		}
+	}
+	if set["not-a-tmux-command"] {
+		t.Error("command table contains an impossible entry")
 	}
 }
 
