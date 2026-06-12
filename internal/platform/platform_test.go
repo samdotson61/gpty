@@ -65,3 +65,83 @@ func TestLookPathSkipsOwnDir(t *testing.T) {
 		t.Errorf("lookPathSkipExeDir with only own dir on PATH = %q, want \"\"", got)
 	}
 }
+
+func TestIsSelf(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	if !isSelf(exe) {
+		t.Error("isSelf(own executable) = false, want true")
+	}
+	if isSelf(writeFake(t, t.TempDir())) {
+		t.Error("isSelf(unrelated file) = true, want false")
+	}
+	if isSelf(filepath.Join(t.TempDir(), "missing")) {
+		t.Error("isSelf(missing path) = true, want false")
+	}
+}
+
+// On Unix the alias is a symlink to gmux; resolution must treat it as self
+// wherever it lives on PATH, not just in our own dir. (On Windows the alias
+// is a same-dir copy, covered by the exe-dir guard + depth sentinel.)
+func TestSymlinkAliasAnywhereIsSkipped(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("alias is a copy on Windows; exe-dir guard + DepthGuard cover it")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	dir := t.TempDir()
+	link := filepath.Join(dir, "tmux")
+	if err := os.Symlink(exe, link); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	if !isSelf(link) {
+		t.Error("isSelf(symlink to running executable) = false, want true")
+	}
+	t.Setenv("PATH", dir)
+	if got := lookPathSkipExeDir("tmux"); got != "" {
+		t.Errorf("lookPathSkipExeDir returned the self-symlink %q, want \"\"", got)
+	}
+}
+
+// The fork-chain bug: with the alias as the only tmux on PATH, the bare-name
+// fallback must yield the poison name, never something that resolves back to
+// the alias.
+func TestFallbackBinRejectsAliasOnlyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows fallback is an absolute MSYS2 path, not a PATH lookup")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+	ownDir := filepath.Dir(exe)
+	alias := writeFake(t, ownDir)
+	defer os.Remove(alias)
+	t.Setenv("PATH", ownDir)
+	if got := fallbackBin(); got != poisonBin {
+		t.Errorf("fallbackBin with alias-only PATH = %q, want %q", got, poisonBin)
+	}
+}
+
+func TestEnvBumpsExecDepth(t *testing.T) {
+	t.Setenv("GPTY_EXEC_DEPTH", "3")
+	for _, e := range Env(false) {
+		if e == "GPTY_EXEC_DEPTH=4" {
+			return
+		}
+	}
+	t.Error("Env did not bump GPTY_EXEC_DEPTH 3 -> 4")
+}
+
+func TestDepthExceeded(t *testing.T) {
+	cases := map[string]bool{"": false, "abc": false, "0": false, "9": false, "10": true, "999": true}
+	for in, want := range cases {
+		if got := depthExceeded(in); got != want {
+			t.Errorf("depthExceeded(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

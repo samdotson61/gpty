@@ -4,6 +4,40 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.5.1] — 2026-06-12
+
+Fixes for the two findings of an external review of 0.3.0–0.5.0.
+
+### Fixed
+- **The tmux alias could still exec itself through the final fallback.**
+  0.4.0's recursion guard protected the PATH lookup but not `defaultBin()`:
+  on Unix that fallback is the bare name "tmux", which exec.Command resolves
+  through PATH — straight back to the alias when no real tmux exists anywhere
+  else (real tmux uninstalled later, or the alias symlink clobbering
+  Homebrew's tmux in /usr/local/bin on Intel Macs). Reproduced live by the
+  reviewer: one re-entry per `-u` flag until OOM. Layered fix:
+  - every resolution layer (env override, PATH lookup, rescan, fallback) now
+    also rejects candidates that ARE the running executable (`os.SameFile`,
+    so a Unix symlink is caught wherever it lives on PATH);
+  - when the only tmux anywhere is our own alias, `Bin()` warns once on
+    stderr and returns a poison name that fails loud and clean
+    ("tmux-not-found: executable file not found") instead of forking;
+  - `install.sh --tmux-alias` refuses to overwrite a `$BIN/tmux` that isn't
+    already gpty's own symlink — the Intel-Mac Homebrew clobber;
+  - defense-in-depth: every tmux invocation bumps `GPTY_EXEC_DEPTH`, and
+    gpty/gmux exit loudly at 10 nested executions (legitimate
+    gmux-inside-a-pane nesting adds one level per human step and never
+    approaches the cap).
+- **gmux's passthrough now routes attaching commands through the interactive
+  environment.** `tmux attach-session -t x` / `new-session` typed by their
+  full names fell to gmux's default case and ran with the non-interactive
+  env (`MSYS=noglob`); gmux now uses the same `Passthrough` routing as the
+  gpty CLI. Note: live testing on the current MSYS2 runtime (tmux 3.6a)
+  showed attach actually works under noglob — cold start and warm attach
+  both verified against the wmux-era "open terminal failed" lore — so this
+  is consistency plus insurance for older runtimes, not a reproduced
+  failure. windows.go's comment now says so.
+
 ## [0.5.0] — 2026-06-10
 
 ### Changed

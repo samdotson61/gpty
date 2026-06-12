@@ -35,13 +35,15 @@ func executableIn(dir, name string) string {
 // exe dir + tmux dir to PATH, then applies MSYS=noglob ONLY for non-interactive
 // commands.
 //
-// Why noglob is conditional: MSYS=noglob disables Cygwin's pseudo-console
-// (pcon), and the interactive tmux CLIENT needs pcon to attach to a native
-// Windows console — without it tmux dies with "open terminal failed: not a
-// terminal". So attach/new (interactive=true) run WITHOUT noglob. Only commands
-// that pass tmux FORMAT strings as args — which Cygwin would otherwise
-// brace-expand, #{x} -> #x — need noglob (interactive=false). Any inherited
-// MSYS is stripped first so we fully control it.
+// Why noglob is conditional: in the wmux era MSYS=noglob was observed to
+// disable Cygwin's pseudo-console (pcon), making an interactive tmux CLIENT
+// die with "open terminal failed: not a terminal". Live testing on the
+// current MSYS2 runtime (2026-06, tmux 3.6a) shows attach now works fine
+// under noglob — the split is kept as defense for older runtimes, not as a
+// present-day fact. Only commands that pass tmux FORMAT strings as args —
+// which Cygwin would otherwise brace-expand, #{x} -> #x — need noglob
+// (interactive=false); attach/new (interactive=true) run WITHOUT it. Any
+// inherited MSYS is stripped first so we fully control it.
 func osEnv(interactive bool) []string {
 	env := os.Environ()
 	kept := env[:0]

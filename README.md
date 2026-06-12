@@ -150,8 +150,13 @@ tmux -V                 # anything gmux doesn't define passes through
 tmux list-windows       #   to the REAL tmux, unchanged
 ```
 
-gpty and gmux resolve the *real* tmux around this alias (a PATH hit in their
-own install dir is skipped), so the passthrough cannot recurse into itself.
+gpty and gmux resolve the *real* tmux around this alias (candidates that are
+the running executable or live in its install dir are rejected at every
+resolution layer, including the bare-name fallback), so the passthrough cannot
+recurse into itself; if the alias is ever the only tmux left, the failure is a
+loud "no real tmux found", and a `GPTY_EXEC_DEPTH` sentinel backstops the lot.
+`install.sh --tmux-alias` refuses to overwrite an existing `tmux` that isn't
+already gpty's own symlink (e.g. Homebrew's, on Intel Macs).
 
 ## How it fits together
 

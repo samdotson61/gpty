@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/samdotson61/gpty/internal/buildinfo"
+	"github.com/samdotson61/gpty/internal/platform"
 	"github.com/samdotson61/gpty/internal/tmux"
 )
 
@@ -45,6 +46,7 @@ func invokedAsTmux(argv0 string) bool {
 }
 
 func main() {
+	platform.DepthGuard("gmux")
 	if len(os.Args) < 2 {
 		if invokedAsTmux(os.Args[0]) {
 			// Bare `tmux` opens a new attached session, like the real thing
@@ -101,7 +103,10 @@ func main() {
 	case "-h", "--help", "help", "":
 		fmt.Println(usage)
 	default:
-		code = tmux.Console(append([]string{cmd}, rest...)...)
+		// Passthrough, not Console: attaching commands typed by their full
+		// tmux names (attach-session, new-session) need the interactive env
+		// on Windows, same routing as the gpty CLI's passthrough.
+		code = tmux.Passthrough(cmd, rest)
 	}
 	os.Exit(code)
 }

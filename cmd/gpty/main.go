@@ -16,10 +16,12 @@ import (
 	"github.com/samdotson61/gpty/internal/ctl"
 	"github.com/samdotson61/gpty/internal/engine"
 	"github.com/samdotson61/gpty/internal/mcpserv"
+	"github.com/samdotson61/gpty/internal/platform"
 	"github.com/samdotson61/gpty/internal/tmux"
 )
 
 func main() {
+	platform.DepthGuard("gpty")
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)

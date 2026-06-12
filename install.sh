@@ -136,7 +136,14 @@ info "Installed: $BIN/gpty, $BIN/gmux"
 
 # Optional `tmux` alias: gmux dispatches on its invoked name, and gpty/gmux
 # skip this alias when resolving the real tmux, so it cannot recurse.
+# Refuse to clobber anything that isn't already our alias — on Intel-Mac
+# Homebrew, brew's tmux and this installer's default BIN are both
+# /usr/local/bin, and overwriting the real tmux would leave the alias as the
+# only tmux on PATH.
 if [[ -n "$TMUX_ALIAS" ]]; then
+    if [[ -e "$BIN/tmux" && "$(readlink "$BIN/tmux" 2>/dev/null)" != "$BIN/gmux" ]]; then
+        err "refusing to overwrite $BIN/tmux with the gmux alias — it isn't gpty's (likely the real tmux; Homebrew on Intel Macs installs there). Set GPTY_BIN to another dir or remove it first."
+    fi
     ln -sf "$BIN/gmux" "$BIN/tmux"
     info "Installed tmux alias: $BIN/tmux -> gmux (shadows the system tmux while $BIN precedes it on PATH)"
 fi
