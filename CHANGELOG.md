@@ -4,6 +4,27 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.7.0] — 2026-07-22
+
+Ships build-plan Phase 6: binary releases. With 0.6.0's event-driven wait this
+closes every open item that can be closed without the Windows box.
+
+### Added
+- **`scripts/release.sh` — one-command release** in the house style: preflight
+  (clean tree, buildinfo/CHANGELOG lockstep check, vet + tests), cross-compile
+  all six targets (`darwin/{arm64,amd64}`, `linux/{amd64,arm64}`,
+  `windows/{amd64,arm64}`, static, trimpath, version stamped), package
+  (tar.gz / zip with README+LICENSE+NOTICE, Windows bundles the installers),
+  sha256 checksums, tag, and `gh release create` with notes pulled from this
+  file's section for the version. First release with binaries: **v0.7.0**.
+- **README installs from binaries** as the first option; building from source
+  stays documented.
+- **[docs/windows-validation.md](windows-validation.md)** — the last open
+  item, scripted down to a ~10-minute copy-paste session on the Windows box:
+  `gpty doctor --ctl-debug` is the probe, the three failure signatures are
+  pre-triaged, and the close-the-gate checklist (remove skips, record §6
+  numbers, bump) is written out.
+
 ## [0.6.0] — 2026-07-22
 
 Closes the last §6 performance-budget item, pending since 0.1.0.

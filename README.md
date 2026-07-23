@@ -52,6 +52,12 @@ Measured on this dev Mac (tmux 3.6a), resident channel vs exec one-shot:
 
 ## Install
 
+**Prebuilt binaries** for all six targets (macOS arm64/amd64, Linux
+amd64/arm64, Windows amd64/arm64) are on the
+[releases page](https://github.com/samdotson61/gpty/releases) — unpack and put
+`gpty` + `gmux` on PATH, then run `gpty setup && gpty doctor`. tmux itself is
+still required (`gpty doctor` tells you the fix). Or build from source:
+
 **macOS / Linux:**
 
 ```sh
@@ -182,13 +188,15 @@ Sessions live under the `agent-pty-<name>` prefix on the default tmux socket, so
 
 ## Status
 
-**v0.2.0 — Unix-verified (local + CI), Windows exec-verified in CI.** Linux and
-macOS run the full live conformance suite green in CI; control mode is verified
-end to end on macOS (unit + conformance + benchmarks + MCP drive). On Windows,
-the exec engine (sessions, panes, literal-send) passes the live CI suite via
-MSYS2 tmux; the control-mode channel is pending validation on real Windows
-hardware — until then gpty automatically falls back to the exec engine there.
-See [CHANGELOG.md](CHANGELOG.md) for details.
+**Unix-verified (local + CI), Windows exec-verified in CI.** Linux and macOS
+run the full live conformance suite green in CI; control mode — including the
+event-driven `wait_for` — is verified end to end on macOS (unit + conformance
++ benchmarks + MCP drive). On Windows, the exec engine (sessions, panes,
+literal-send, passthrough) passes the live CI suite via MSYS2 tmux; the
+control-mode channel is pending validation on real Windows hardware — until
+then gpty automatically falls back to the exec engine there. That validation
+is a ~10-minute scripted step: [docs/windows-validation.md](docs/windows-validation.md).
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ## Credit
 
