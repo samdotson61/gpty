@@ -47,10 +47,15 @@ const (
 	// exceed the steady-state budget, and a failed dial just means exec
 	// fallback — so be patient before declaring the channel unusable.
 	handshakeTimeout = 20 * time.Second
-	// WaitPoll is how often the resident WaitFor re-captures over the open
-	// channel. Far tighter than the exec path's 200 ms because a capture here is
-	// a sub-ms pipe round-trip, not a process spawn.
+	// WaitPoll is the resident WaitFor's re-capture cadence when the
+	// event-driven path is unavailable (window link failed). Far tighter than
+	// the exec path's 200 ms because a capture here is a sub-ms pipe
+	// round-trip, not a process spawn.
 	WaitPoll = 25 * time.Millisecond
+	// eventSafetyPoll is the slow recheck tick while waiting on %output
+	// events — pure paranoia against a missed event (e.g. the agent switching
+	// the session's current window mid-wait); the hot path is the push.
+	eventSafetyPoll = 250 * time.Millisecond
 )
 
 // reply collects the output lines of one command's %begin…%end block.
@@ -69,7 +74,26 @@ type Client struct {
 	pending chan *reply // commands awaiting their %begin
 	closeMu sync.Mutex
 	closed  chan struct{}
+
+	outMu sync.Mutex
+	outCh chan struct{} // closed and replaced on every %output burst (broadcast)
+
+	linkMu sync.Mutex
+	links  map[string]*winLink // window-id -> refcounted link into ctlSession
 }
+
+// winLink tracks one target window linked into the hidden ctl session so its
+// %output events reach this client (tmux only delivers pane output for windows
+// in the control client's OWN session — verified live; see WaitFor).
+type winLink struct {
+	refs  int
+	index string // window index inside ctlSession, needed to unlink
+}
+
+// Debug, when set before Dial, receives every raw control-mode line (prefixed
+// "ctl< ") and every command written ("ctl> "). Used by `gpty doctor` to
+// diagnose hosts where the channel won't come up (the open Windows question).
+var Debug io.Writer
 
 // Dial starts a control-mode client and returns once the startup handshake has
 // been drained (so no command can race the unsolicited startup frames).
@@ -96,6 +120,8 @@ func Dial() (*Client, error) {
 		stdin:   stdin,
 		pending: make(chan *reply, 64),
 		closed:  make(chan struct{}),
+		outCh:   make(chan struct{}),
+		links:   map[string]*winLink{},
 	}
 
 	lines := make(chan string, 256)
@@ -122,6 +148,9 @@ func scan(r io.Reader, out chan<- string) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024) // allow wide captures
 	for sc.Scan() {
+		if Debug != nil {
+			fmt.Fprintf(Debug, "ctl< %s\n", sc.Text())
+		}
 		out <- sc.Text()
 	}
 	close(out)
@@ -166,8 +195,12 @@ func (c *Client) readLoop(lines chan string) {
 			// Inside a block: verbatim content, even if it starts with '%'.
 			cur.lines = append(cur.lines, line)
 		default:
-			// Between blocks: an async notification (%output, %exit, …). The
-			// reliable hot path is capture-poll, so we just consume these.
+			// Between blocks: an async notification. %output is the WaitFor
+			// wake signal (the pane bytes themselves aren't parsed — waiters
+			// re-capture their own target, which is a sub-ms round-trip).
+			if strings.HasPrefix(line, "%output ") {
+				c.notifyOutput()
+			}
 		}
 	}
 	// Stream closed: fail any in-flight and future commands.
@@ -194,6 +227,9 @@ func (c *Client) run(args ...string) ([]string, error) {
 // patient than steady-state commands).
 func (c *Client) runT(timeout time.Duration, args ...string) ([]string, error) {
 	line := encodeCommand(args)
+	if Debug != nil {
+		fmt.Fprintf(Debug, "ctl> %s\n", line)
+	}
 	r := &reply{done: make(chan struct{})}
 
 	c.mu.Lock()
@@ -309,13 +345,98 @@ func (c *Client) Send(target, text string) error {
 	return nil
 }
 
-// WaitFor polls Capture over the open channel until pattern (substring, or
-// regex if it compiles) appears, or the timeout elapses. The tight poll is
-// cheap because each capture is a pipe round-trip, not a process spawn.
+// notifyOutput broadcasts "a linked pane produced output" to every waiter by
+// closing the current signal channel and replacing it.
+func (c *Client) notifyOutput() {
+	c.outMu.Lock()
+	close(c.outCh)
+	c.outCh = make(chan struct{})
+	c.outMu.Unlock()
+}
+
+// outputSignal returns the channel the NEXT %output burst will close.
+func (c *Client) outputSignal() <-chan struct{} {
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+	return c.outCh
+}
+
+// linkForEvents links target's current window into the hidden ctl session so
+// tmux delivers its %output here — control clients only receive pane output
+// for windows in their OWN attached session (verified live: an unlinked
+// session is silent, a linked window streams, unlink silences it again).
+// Links are refcounted per window id so concurrent waits on the same target
+// share one link. Returns the unlink func, or nil if linking failed (the
+// caller then falls back to the WaitPoll capture loop).
+func (c *Client) linkForEvents(target string) func() {
+	c.linkMu.Lock()
+	defer c.linkMu.Unlock()
+
+	wid, err := c.run("display-message", "-p", "-t", target, "#{window_id}")
+	if err != nil || len(wid) == 0 || strings.TrimSpace(wid[0]) == "" {
+		return nil
+	}
+	id := strings.TrimSpace(wid[0])
+	if l, ok := c.links[id]; ok {
+		l.refs++
+		return func() { c.unlink(id) }
+	}
+	if _, err := c.run("link-window", "-d", "-s", target, "-t", ctlSession+":"); err != nil {
+		return nil
+	}
+	// Find where it landed — unlink-window needs the index within ctlSession.
+	out, err := c.run("list-windows", "-t", ctlSession, "-F", "#{window_index} #{window_id}")
+	if err != nil {
+		return nil
+	}
+	for _, ln := range out {
+		if f := strings.Fields(ln); len(f) == 2 && f[1] == id {
+			c.links[id] = &winLink{refs: 1, index: f[0]}
+			return func() { c.unlink(id) }
+		}
+	}
+	return nil
+}
+
+func (c *Client) unlink(id string) {
+	c.linkMu.Lock()
+	defer c.linkMu.Unlock()
+	l := c.links[id]
+	if l == nil {
+		return
+	}
+	if l.refs--; l.refs > 0 {
+		return
+	}
+	delete(c.links, id)
+	// Best-effort: the window may already be gone (session killed mid-wait).
+	_, _ = c.run("unlink-window", "-t", ctlSession+":"+l.index)
+}
+
+// WaitFor blocks until pattern (substring, or regex if it compiles) appears in
+// target's rendered screen, or the timeout elapses.
+//
+// Event-driven (build-plan §6): the target window is linked into the ctl
+// session so its %output pushes wake the wait — reaction is one sub-ms capture
+// after the push, with a slow safety tick behind it. If linking fails, it
+// degrades to the plain WaitPoll capture loop.
 func (c *Client) WaitFor(target, pattern string, timeoutSec float64) (string, error) {
 	re, _ := regexp.Compile(pattern)
 	deadline := time.Now().Add(time.Duration(timeoutSec * float64(time.Second)))
+
+	unlink := c.linkForEvents(target)
+	if unlink != nil {
+		defer unlink()
+	}
+	tick := WaitPoll
+	if unlink != nil {
+		tick = eventSafetyPoll
+	}
 	for {
+		// Grab the signal BEFORE capturing: output that lands during the
+		// capture closes this channel, so the select below fires immediately
+		// instead of stalling a full tick.
+		sig := c.outputSignal()
 		snap, err := c.Capture(target)
 		if err != nil {
 			return "", err
@@ -323,9 +444,19 @@ func (c *Client) WaitFor(target, pattern string, timeoutSec float64) (string, er
 		if session.Match(snap, pattern, re) {
 			return snap, nil
 		}
-		if time.Now().After(deadline) {
+		remain := time.Until(deadline)
+		if remain <= 0 {
 			return "", fmt.Errorf("timeout: pattern %q not found in %q within %.1fs", pattern, target, timeoutSec)
 		}
-		time.Sleep(WaitPoll)
+		wait := tick
+		if remain < wait {
+			wait = remain
+		}
+		select {
+		case <-sig:
+		case <-time.After(wait):
+		case <-c.closed:
+			return "", fmt.Errorf("control channel closed")
+		}
 	}
 }

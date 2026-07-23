@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -212,6 +213,131 @@ func TestCtlEngine(t *testing.T) {
 	}
 	if strings.TrimSpace(execSnap) != strings.TrimSpace(ctlSnap) {
 		t.Fatalf("exec and ctl captures disagree:\n--exec--\n%s\n--ctl--\n%s", execSnap, ctlSnap)
+	}
+}
+
+// ctlWindowCount counts windows in the hidden control session ("agentpty_ctl",
+// unexported in internal/ctl) — the observable for WaitFor's link/unlink.
+func ctlWindowCount(t *testing.T) int {
+	t.Helper()
+	out, code, _ := tmux.RunCapture("list-windows", "-t", "agentpty_ctl", "-F", "#{window_id}")
+	if code != 0 {
+		t.Fatalf("list-windows on ctl session failed (rc=%d)", code)
+	}
+	return len(strings.Fields(out))
+}
+
+// TestCtlEventWaitFor pins the event-driven wait (build-plan §6): the target
+// window is linked into the ctl session for the wait's duration (asserted via
+// window counts), the wake comes from a %output push produced by a DIFFERENT
+// tmux client (the exec path), and the reaction is far below the poll floor.
+func TestCtlEventWaitFor(t *testing.T) {
+	client, err := ctl.Dial()
+	if err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("control mode dial failed on Windows (runtime uses exec fallback): %v", err)
+		}
+		t.Fatalf("ctl.Dial: %v", err)
+	}
+	defer client.Close()
+
+	name := uniqueName(t)
+	if err := session.Spawn(name, "", "", 80, 24); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	target := session.Full(name)
+	before := ctlWindowCount(t)
+
+	var reactions []time.Duration
+	for round := 0; round < 5; round++ {
+		marker := fmt.Sprintf("evt-marker-%d", round)
+		got := make(chan error, 1)
+		var snap string
+		go func() {
+			var werr error
+			snap, werr = client.WaitFor(target, marker, 10)
+			got <- werr
+		}()
+		time.Sleep(250 * time.Millisecond) // wait is armed and linked
+
+		if round == 0 {
+			if during := ctlWindowCount(t); during != before+1 {
+				t.Errorf("expected target linked into ctl session during wait: before=%d during=%d", before, during)
+			}
+		}
+
+		start := time.Now()
+		// Send via the EXEC path — a different tmux client than the waiter.
+		if err := session.Send(name, "echo "+marker+"<Enter>"); err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+		if werr := <-got; werr != nil {
+			t.Fatalf("WaitFor: %v", werr)
+		}
+		reaction := time.Since(start)
+		if !strings.Contains(snap, marker) {
+			t.Fatalf("snapshot missing %q", marker)
+		}
+		reactions = append(reactions, reaction)
+	}
+
+	if after := ctlWindowCount(t); after != before {
+		t.Errorf("link not cleaned up: before=%d after=%d", before, after)
+	}
+
+	sort.Slice(reactions, func(i, j int) bool { return reactions[i] < reactions[j] })
+	median := reactions[len(reactions)/2]
+	t.Logf("cross-client round-trip — median %v, all %v (includes exec spawn + shell latency)", median, reactions)
+	// Generous CI bound; the tight §6 number comes from TestCtlWaitReaction.
+	if median > 150*time.Millisecond {
+		t.Errorf("median reaction %v exceeds 150ms — event path not engaging", median)
+	}
+}
+
+// TestCtlWaitReaction isolates the §6 "wait_for reaction to output" number:
+// the pane runs `cat` (echoes instantly, no shell line-editor latency) and the
+// send goes over the ctl channel (~30µs, no process spawn), so the measured
+// time is essentially output-appears -> WaitFor-returns.
+func TestCtlWaitReaction(t *testing.T) {
+	client, err := ctl.Dial()
+	if err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("control mode dial failed on Windows (runtime uses exec fallback): %v", err)
+		}
+		t.Fatalf("ctl.Dial: %v", err)
+	}
+	defer client.Close()
+
+	name := uniqueName(t)
+	if err := session.Spawn(name, "cat", "", 80, 24); err != nil {
+		t.Fatalf("Spawn(cat): %v", err)
+	}
+	target := session.Full(name)
+
+	var reactions []time.Duration
+	for round := 0; round < 7; round++ {
+		marker := fmt.Sprintf("rx-%d-end", round)
+		got := make(chan error, 1)
+		go func() {
+			_, werr := client.WaitFor(target, marker, 10)
+			got <- werr
+		}()
+		time.Sleep(150 * time.Millisecond) // armed + linked
+
+		start := time.Now()
+		if err := client.Send(target, marker+"<Enter>"); err != nil {
+			t.Fatalf("ctl Send: %v", err)
+		}
+		if werr := <-got; werr != nil {
+			t.Fatalf("WaitFor: %v", werr)
+		}
+		reactions = append(reactions, time.Since(start))
+	}
+	sort.Slice(reactions, func(i, j int) bool { return reactions[i] < reactions[j] })
+	median := reactions[len(reactions)/2]
+	t.Logf("§6 wait_for reaction — median %v, min %v, max %v", median, reactions[0], reactions[len(reactions)-1])
+	if median > 100*time.Millisecond {
+		t.Errorf("median reaction %v exceeds 100ms — event path not engaging", median)
 	}
 }
 

@@ -7,8 +7,10 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/samdotson61/gpty/internal/buildinfo"
+	"github.com/samdotson61/gpty/internal/ctl"
 	"github.com/samdotson61/gpty/internal/platform"
 )
 
@@ -52,8 +54,11 @@ func trim(s string) string {
 	return s
 }
 
-// runDoctor checks the environment and prints actionable fixes.
-func runDoctor() error {
+// runDoctor checks the environment and prints actionable fixes. --ctl-debug
+// adds a raw protocol dump to the control-mode probe.
+func runDoctor(args []string) error {
+	opts, _ := parseOpts(args, map[string]bool{})
+	debug := boolFlag(opts, "ctl-debug")
 	fmt.Printf("gpty %s  (%s/%s)\n", buildinfo.Version, runtime.GOOS, runtime.GOARCH)
 	fmt.Printf("tmux binary: %s\n", platform.Bin())
 
@@ -97,6 +102,34 @@ func runDoctor() error {
 	} else {
 		fmt.Println("  i not inside tmux — pane_split needs $TMUX_PANE; run the agent inside a gmux session for live panes.")
 	}
-	fmt.Println("all good.")
+
+	probeCtl(debug)
+	fmt.Println("done.")
 	return nil
+}
+
+// probeCtl dials the control-mode channel and reports the result. This is the
+// diagnostic for the open Windows question (cygwin tmux -C never answering the
+// handshake): with debug=true every raw protocol line is echoed, so a failing
+// host shows exactly what — if anything — came back before the timeout.
+func probeCtl(debug bool) {
+	fmt.Println("control mode (resident-server accelerator):")
+	if debug {
+		ctl.Debug = os.Stdout
+		defer func() { ctl.Debug = nil }()
+		fmt.Println("  (raw protocol dump on — lines prefixed ctl>/ctl<)")
+	}
+	fmt.Println("  probing... (a broken channel takes ~20s to declare itself)")
+	start := time.Now()
+	c, err := ctl.Dial()
+	if err != nil {
+		fmt.Printf("  ✗ control channel failed after %s: %v\n", time.Since(start).Round(time.Millisecond), err)
+		fmt.Println("    gpty still works — the resident server falls back to the exec engine.")
+		if !debug {
+			fmt.Println("    re-run `gpty doctor --ctl-debug` and share the ctl>/ctl< lines to diagnose.")
+		}
+		return
+	}
+	defer c.Close()
+	fmt.Printf("  ✓ control channel up in %s (hot reads/sends take the fast path)\n", time.Since(start).Round(time.Millisecond))
 }

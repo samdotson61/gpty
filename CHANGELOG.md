@@ -4,6 +4,28 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.6.0] — 2026-07-22
+
+Closes the last §6 performance-budget item, pending since 0.1.0.
+
+### Added
+- **Event-driven `wait_for` on the resident path.** tmux only delivers
+  `%output` notifications for windows in the control client's own session
+  (live-verified: unlinked sessions are silent), so WaitFor now `link-window`s
+  the target into the hidden ctl session for the wait's duration (refcounted,
+  unlinked on return) and wakes on the push, with a 250 ms safety tick behind
+  it and the old 25 ms capture-poll as fallback when linking fails. Measured
+  reaction to output: **~1.2 ms median (553 µs min)** against the §6 ≤10 ms
+  gate — vs the 200 ms poll floor of the exec path. Idle cost drops from 40
+  captures/s to 4/s. Two new live tests pin it: cross-client correctness +
+  link/unlink mechanics (`TestCtlEventWaitFor`) and the isolated reaction
+  number via a `cat` pane driven over the channel (`TestCtlWaitReaction`).
+- **`gpty doctor` now probes the control channel** and reports how fast it
+  came up — or why it didn't. `--ctl-debug` dumps every raw protocol line
+  (`ctl>`/`ctl<`), which is exactly the diagnostic the open Windows question
+  needs (cygwin `tmux -C` never answers the handshake; see
+  docs/windows-validation.md).
+
 ## [0.5.1] — 2026-06-12
 
 Fixes for the two findings of an external review of 0.3.0–0.5.0.

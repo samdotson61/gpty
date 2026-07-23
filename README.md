@@ -35,14 +35,20 @@ Two paths, by design:
    command becomes a line on an already-open pipe — no process spawn. On Windows
    this skips the cygwin exec tax *per call*.
 
+`wait_for` is **event-driven** on the resident path: the target window is
+linked into the control session for the wait's duration, so tmux's `%output`
+notifications push the wake instead of a poll finding it later.
+
 Measured on this dev Mac (tmux 3.6a), resident channel vs exec one-shot:
 
 | Operation | exec one-shot | resident (control mode) | speedup |
 |---|--:|--:|--:|
 | snapshot | ~2.7 ms | **~27 µs** | ~100× |
 | send | ~2.7 ms | **~27 µs** | ~100× |
+| `wait_for` reaction to output | 200 ms poll | **~1.2 ms median** (event push) | ~160× |
 
-(`go test -tags live -bench . ./conformance/` reproduces these.)
+(`go test -tags live -bench . ./conformance/` reproduces the first two;
+`go test -tags live -v -run TestCtlWaitReaction ./conformance/` the third.)
 
 ## Install
 

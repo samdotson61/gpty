@@ -104,7 +104,7 @@ func main() {
 			return nil
 		})
 	case "doctor":
-		err = runDoctor()
+		err = runDoctor(args)
 	case "setup":
 		err = runSetup(args)
 	case "version", "--version", "-v":
@@ -152,7 +152,7 @@ const usage = `gpty — agent terminal control over tmux (Windows / macOS / Linu
   gpty pane-kill <pane>
 
  Setup / diagnostics:
-  gpty doctor                          check tmux is present and >= 3.2
+  gpty doctor [--ctl-debug]            check tmux >= 3.2 + probe control mode (debug: raw dump)
   gpty setup [--dir D]                 install the tmux.conf (PowerShell-7 panes on Windows)
   gpty version
 
