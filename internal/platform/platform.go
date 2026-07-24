@@ -9,7 +9,9 @@
 package platform
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,27 +25,27 @@ import (
 //
 // Every resolution layer rejects candidates that are really US: the installers
 // register gmux under the name `tmux` (busybox-style alias), and resolving
-// that here would make gpty/gmux exec themselves forever. Two checks compose
-// the guard — "same dir as the running executable" (catches the Windows copy
-// next to gmux.exe) and os.SameFile against the running executable (catches a
-// Unix symlink wherever it lives on PATH). The fallback validates too, because
-// on Unix it is the bare name "tmux", which exec.Command would resolve through
-// PATH straight back to the alias. GPTY_EXEC_DEPTH (see DepthGuard) backstops
-// anything that slips through all of it.
+// that here would make gpty/gmux exec themselves forever. The test is
+// IDENTITY, not location (see isAliasOfOurs) — an earlier version rejected
+// everything in the running executable's directory, which broke Homebrew,
+// where gpty and the real tmux are both symlinked into the same bin dir.
+// The fallback validates too, because on Unix it is the bare name "tmux",
+// which exec.Command would resolve through PATH straight back to the alias.
+// GPTY_EXEC_DEPTH (see DepthGuard) backstops anything that slips through.
 func Bin() string {
 	for _, k := range []string{"GPTY_TMUX", "WMUX_TMUX"} {
 		if v := os.Getenv(k); v != "" {
-			if isSelf(v) {
+			if isAliasOfOurs(v) {
 				warnAliasOnly(fmt.Sprintf("$%s points at gpty's own tmux alias — ignoring it", k))
 				continue
 			}
 			return v
 		}
 	}
-	if p, err := exec.LookPath("tmux"); err == nil && !isExeDir(filepath.Dir(p)) && !isSelf(p) {
+	if p, err := exec.LookPath("tmux"); err == nil && !isAliasOfOurs(p) {
 		return p
 	}
-	if p := lookPathSkipExeDir("tmux"); p != "" {
+	if p := lookPathSkipAlias("tmux"); p != "" {
 		return p
 	}
 	return fallbackBin()
@@ -60,7 +62,7 @@ const poisonBin = "tmux-not-found"
 // would re-enter us once per call until OOM (the fork-chain bug).
 func fallbackBin() string {
 	d := defaultBin()
-	if p, err := exec.LookPath(d); err == nil && (isExeDir(filepath.Dir(p)) || isSelf(p)) {
+	if p, err := exec.LookPath(d); err == nil && isAliasOfOurs(p) {
 		warnAliasOnly("no real tmux found — the only `tmux` on PATH is gpty's own alias. Install tmux or set GPTY_TMUX; `gpty doctor` explains")
 		return poisonBin
 	}
@@ -73,31 +75,17 @@ func warnAliasOnly(msg string) {
 	warnOnce.Do(func() { fmt.Fprintln(os.Stderr, "gpty: "+msg) })
 }
 
-// lookPathSkipExeDir scans PATH for name, skipping the running executable's
-// own directory and anything that IS the running executable (the `tmux`
-// alias of gmux, as a same-dir copy on Windows or a symlink anywhere on Unix).
-func lookPathSkipExeDir(name string) string {
+// lookPathSkipAlias scans PATH for name, skipping our own `tmux` alias.
+func lookPathSkipAlias(name string) string {
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir == "" || isExeDir(dir) {
+		if dir == "" {
 			continue
 		}
-		if p := executableIn(dir, name); p != "" && !isSelf(p) {
+		if p := executableIn(dir, name); p != "" && !isAliasOfOurs(p) {
 			return p
 		}
 	}
 	return ""
-}
-
-// isExeDir reports whether dir is the running executable's directory.
-// os.SameFile handles case differences and links.
-func isExeDir(dir string) bool {
-	ed := exeDir()
-	if ed == "" || dir == "" {
-		return false
-	}
-	a, err1 := os.Stat(dir)
-	b, err2 := os.Stat(ed)
-	return err1 == nil && err2 == nil && os.SameFile(a, b)
 }
 
 // isSelf reports whether p is the running executable itself. Stat follows
@@ -110,6 +98,69 @@ func isSelf(p string) bool {
 	a, err1 := os.Stat(p)
 	b, err2 := os.Stat(exe)
 	return err1 == nil && err2 == nil && os.SameFile(a, b)
+}
+
+// isAliasOfOurs reports whether p is gpty's own `tmux` alias rather than a
+// real tmux. It tests identity rather than location, because "lives in the
+// same directory as me" is not a usable proxy: Homebrew symlinks gpty AND the
+// real tmux into the same bin dir, and rejecting that directory left a
+// brew-installed gpty unable to find tmux at all.
+//
+// The alias takes two forms, and both are caught here:
+//   - a symlink/hardlink to gmux (install.sh --tmux-alias) — os.SameFile;
+//   - a byte-identical COPY of gmux.exe (install.ps1, where symlinks need
+//     privileges) — same size and same content as a sibling gpty/gmux binary.
+//
+// Cost is one Stat in the common case: a real tmux differs in size from our
+// binaries, so the content hash is only ever computed on an exact size tie.
+func isAliasOfOurs(p string) bool {
+	if isSelf(p) {
+		return true
+	}
+	dir := exeDir()
+	if dir == "" {
+		return false
+	}
+	for _, sibling := range []string{"gmux", "gpty"} {
+		if q := executableIn(dir, sibling); q != "" && sameContent(p, q) {
+			return true
+		}
+	}
+	return false
+}
+
+// sameContent reports whether two paths hold identical bytes, short-circuiting
+// on size so the hash is rare.
+func sameContent(a, b string) bool {
+	fa, err1 := os.Stat(a)
+	fb, err2 := os.Stat(b)
+	if err1 != nil || err2 != nil || fa.Size() != fb.Size() {
+		return false
+	}
+	if os.SameFile(fa, fb) {
+		return true
+	}
+	ha, err := hashFile(a)
+	if err != nil {
+		return false
+	}
+	hb, err := hashFile(b)
+	return err == nil && ha == hb
+}
+
+func hashFile(p string) ([sha256.Size]byte, error) {
+	var sum [sha256.Size]byte
+	f, err := os.Open(p)
+	if err != nil {
+		return sum, err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return sum, err
+	}
+	copy(sum[:], h.Sum(nil))
+	return sum, nil
 }
 
 // --- exec-depth sentinel ------------------------------------------------------

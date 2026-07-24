@@ -1,0 +1,58 @@
+# Formula template for the samdotson61/homebrew-tap tap.
+# scripts/release.sh substitutes the version and checksums from the published
+# release and pushes the result, so the tap can never drift from the binaries.
+# Do not edit the generated Formula/gpty.rb by hand — edit this template.
+class Gpty < Formula
+  desc "Shared terminal for LLM agents and humans, over real tmux (gpty + gmux)"
+  homepage "https://github.com/samdotson61/gpty"
+  version "@@VERSION@@"
+  license "MIT"
+
+  # tmux is the one runtime dependency gpty does not ship: it orchestrates the
+  # real thing rather than reimplementing it.
+  depends_on "tmux"
+
+  on_macos do
+    on_arm do
+      url "https://github.com/samdotson61/gpty/releases/download/v@@VERSION@@/gpty_@@VERSION@@_darwin_arm64.tar.gz"
+      sha256 "@@SHA_DARWIN_ARM64@@"
+    end
+    on_intel do
+      url "https://github.com/samdotson61/gpty/releases/download/v@@VERSION@@/gpty_@@VERSION@@_darwin_amd64.tar.gz"
+      sha256 "@@SHA_DARWIN_AMD64@@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/samdotson61/gpty/releases/download/v@@VERSION@@/gpty_@@VERSION@@_linux_arm64.tar.gz"
+      sha256 "@@SHA_LINUX_ARM64@@"
+    end
+    on_intel do
+      url "https://github.com/samdotson61/gpty/releases/download/v@@VERSION@@/gpty_@@VERSION@@_linux_amd64.tar.gz"
+      sha256 "@@SHA_LINUX_AMD64@@"
+    end
+  end
+
+  def install
+    bin.install "gpty", "gmux"
+  end
+
+  def caveats
+    <<~EOS
+      Install the tmux config (PowerShell-7 panes on Windows, truecolor everywhere):
+        gpty setup
+
+      Register with Claude Code so local agents can drive terminals:
+        claude mcp add gpty -- gpty mcp
+
+      Check the install (tmux >= 3.2 + control-mode probe):
+        gpty doctor
+    EOS
+  end
+
+  test do
+    assert_match "gpty #{version}", shell_output("#{bin}/gpty version")
+    assert_match "gmux #{version}", shell_output("#{bin}/gmux version")
+  end
+end

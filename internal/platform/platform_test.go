@@ -7,63 +7,34 @@ import (
 	"testing"
 )
 
-func tmuxName() string {
-	if runtime.GOOS == "windows" {
-		return "tmux.exe"
-	}
-	return "tmux"
-}
-
-// writeFake creates an executable file named like tmux in dir.
-func writeFake(t *testing.T, dir string) string {
+// writeExe creates an executable file with the given content.
+func writeExe(t *testing.T, dir, name, content string) string {
 	t.Helper()
-	p := filepath.Join(dir, tmuxName())
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("writeFake(%s): %v", dir, err)
+	if runtime.GOOS == "windows" && filepath.Ext(name) == "" {
+		name += ".exe"
 	}
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o755); err != nil {
+		t.Fatalf("writeExe(%s): %v", p, err)
+	}
+	t.Cleanup(func() { os.Remove(p) })
 	return p
 }
 
-func TestIsExeDir(t *testing.T) {
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatalf("os.Executable: %v", err)
-	}
-	if !isExeDir(filepath.Dir(exe)) {
-		t.Error("isExeDir(own dir) = false, want true")
-	}
-	if isExeDir(t.TempDir()) {
-		t.Error("isExeDir(temp dir) = true, want false")
-	}
-	if isExeDir("") {
-		t.Error(`isExeDir("") = true, want false`)
-	}
+// writeFake creates a distinct (non-alias) "tmux" in dir — stands in for the
+// real tmux binary.
+func writeFake(t *testing.T, dir string) string {
+	t.Helper()
+	return writeExe(t, dir, "tmux", "#!/bin/sh\n# a real tmux, not ours\n")
 }
 
-// The recursion guard: a `tmux` that is really the gmux alias sits in our own
-// install dir; resolution must skip it and find the one further down PATH.
-func TestLookPathSkipsOwnDir(t *testing.T) {
+func ownDir(t *testing.T) string {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
-	ownDir := filepath.Dir(exe)
-	alias := writeFake(t, ownDir) // the trap: an alias next to the running binary
-	defer os.Remove(alias)
-	other := t.TempDir()
-	real := writeFake(t, other)
-
-	t.Setenv("PATH", ownDir+listSep+other)
-	if got := lookPathSkipExeDir("tmux"); got != real {
-		t.Errorf("lookPathSkipExeDir = %q, want %q (the non-alias copy)", got, real)
-	}
-
-	// With ONLY the alias on PATH, resolution must yield nothing rather than
-	// ourselves.
-	t.Setenv("PATH", ownDir)
-	if got := lookPathSkipExeDir("tmux"); got != "" {
-		t.Errorf("lookPathSkipExeDir with only own dir on PATH = %q, want \"\"", got)
-	}
+	return filepath.Dir(exe)
 }
 
 func TestIsSelf(t *testing.T) {
@@ -82,28 +53,83 @@ func TestIsSelf(t *testing.T) {
 	}
 }
 
-// On Unix the alias is a symlink to gmux; resolution must treat it as self
-// wherever it lives on PATH, not just in our own dir. (On Windows the alias
-// is a same-dir copy, covered by the exe-dir guard + depth sentinel.)
-func TestSymlinkAliasAnywhereIsSkipped(t *testing.T) {
+// isAliasOfOurs must catch both alias forms and nothing else.
+func TestIsAliasOfOurs(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable: %v", err)
+	}
+
+	if !isAliasOfOurs(exe) {
+		t.Error("isAliasOfOurs(running executable) = false, want true")
+	}
+
+	// A real, distinct tmux — even sitting in our own directory (the Homebrew
+	// layout) — is NOT our alias.
+	if isAliasOfOurs(writeFake(t, ownDir(t))) {
+		t.Error("isAliasOfOurs(distinct binary in own dir) = true, want false — this is the Homebrew case")
+	}
+	if isAliasOfOurs(writeFake(t, t.TempDir())) {
+		t.Error("isAliasOfOurs(unrelated binary) = true, want false")
+	}
+
+	// The Windows-style alias: a byte-identical COPY of a sibling gmux.
+	const body = "MZ fake gmux binary payload\n"
+	writeExe(t, ownDir(t), "gmux", body)
+	copyAlias := writeExe(t, t.TempDir(), "tmux", body)
+	if !isAliasOfOurs(copyAlias) {
+		t.Error("isAliasOfOurs(byte-identical copy of sibling gmux) = false, want true")
+	}
+	// Same size but different bytes must not trip it.
+	differing := writeExe(t, t.TempDir(), "tmux", "MZ fake gmux binary payloaX\n")
+	if len(body) == len("MZ fake gmux binary payloaX\n") && isAliasOfOurs(differing) {
+		t.Error("isAliasOfOurs(same size, different content) = true, want false")
+	}
+}
+
+// REGRESSION (found by live-testing the Homebrew tap at v0.7.0): brew symlinks
+// gpty AND the real tmux into the same bin dir. The old location-based guard
+// rejected everything in that directory, so a brew-installed gpty resolved
+// tmux to the poison name and could not run at all.
+func TestHomebrewLayoutFindsRealTmux(t *testing.T) {
+	dir := ownDir(t)
+	real := writeFake(t, dir) // real tmux, same directory as the running binary
+	t.Setenv("PATH", dir)
+	if got := Bin(); got != real {
+		t.Errorf("Bin() = %q, want %q — a real tmux beside our binary must be used, not rejected", got, real)
+	}
+}
+
+// The recursion guard still holds: a `tmux` that really IS our alias must be
+// skipped in favour of one further down PATH.
+func TestLookPathSkipsAlias(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("alias is a copy on Windows; exe-dir guard + DepthGuard cover it")
+		t.Skip("uses a symlink; the copy form is covered by TestIsAliasOfOurs")
 	}
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
-	dir := t.TempDir()
-	link := filepath.Join(dir, "tmux")
-	if err := os.Symlink(exe, link); err != nil {
+	aliasDir := t.TempDir()
+	alias := filepath.Join(aliasDir, "tmux")
+	if err := os.Symlink(exe, alias); err != nil {
 		t.Skipf("symlink: %v", err)
 	}
-	if !isSelf(link) {
-		t.Error("isSelf(symlink to running executable) = false, want true")
+	other := t.TempDir()
+	real := writeFake(t, other)
+
+	t.Setenv("PATH", aliasDir+listSep+other)
+	if got := lookPathSkipAlias("tmux"); got != real {
+		t.Errorf("lookPathSkipAlias = %q, want %q (the real tmux)", got, real)
 	}
-	t.Setenv("PATH", dir)
-	if got := lookPathSkipExeDir("tmux"); got != "" {
-		t.Errorf("lookPathSkipExeDir returned the self-symlink %q, want \"\"", got)
+	if got := Bin(); got != real {
+		t.Errorf("Bin() = %q, want %q", got, real)
+	}
+
+	// With ONLY the alias on PATH, resolution must yield nothing rather than us.
+	t.Setenv("PATH", aliasDir)
+	if got := lookPathSkipAlias("tmux"); got != "" {
+		t.Errorf("lookPathSkipAlias with only the alias on PATH = %q, want \"\"", got)
 	}
 }
 
@@ -118,12 +144,16 @@ func TestFallbackBinRejectsAliasOnlyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
-	ownDir := filepath.Dir(exe)
-	alias := writeFake(t, ownDir)
-	defer os.Remove(alias)
-	t.Setenv("PATH", ownDir)
+	dir := t.TempDir()
+	if err := os.Symlink(exe, filepath.Join(dir, "tmux")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	t.Setenv("PATH", dir)
 	if got := fallbackBin(); got != poisonBin {
 		t.Errorf("fallbackBin with alias-only PATH = %q, want %q", got, poisonBin)
+	}
+	if got := Bin(); got != poisonBin {
+		t.Errorf("Bin with alias-only PATH = %q, want %q", got, poisonBin)
 	}
 }
 

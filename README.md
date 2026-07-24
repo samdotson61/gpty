@@ -52,13 +52,28 @@ Measured on this dev Mac (tmux 3.6a), resident channel vs exec one-shot:
 
 ## Install
 
-**Prebuilt binaries** for all six targets (macOS arm64/amd64, Linux
-amd64/arm64, Windows amd64/arm64) are on the
-[releases page](https://github.com/samdotson61/gpty/releases) — unpack and put
-`gpty` + `gmux` on PATH, then run `gpty setup && gpty doctor`. tmux itself is
-still required (`gpty doctor` tells you the fix). Or build from source:
+**Homebrew (macOS / Linux):**
 
-**macOS / Linux:**
+```sh
+brew install samdotson61/tap/gpty
+gpty setup && gpty doctor
+```
+
+**One-liner (macOS / Linux, no Go needed):**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/samdotson61/gpty/main/install-release.sh | sh
+```
+
+Downloads the release build for your platform, verifies its checksum, installs
+`gpty` + `gmux`, and writes the tmux config. `GPTY_BIN=<dir>` picks the
+destination; `GPTY_VERSION=vX.Y.Z` pins a version.
+
+**Prebuilt binaries** for all six targets (macOS arm64/amd64, Linux
+amd64/arm64, Windows amd64/arm64) are also on the
+[releases page](https://github.com/samdotson61/gpty/releases), with checksums.
+
+**Build from source — macOS / Linux:**
 
 ```sh
 ./install.sh        # builds gpty + gmux, installs them + the tmux.conf

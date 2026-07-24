@@ -78,4 +78,32 @@ info "Publishing GitHub release $TAG"
 gh release create "$TAG" dist/*.tar.gz dist/*.zip dist/checksums.txt \
     --title "gpty $TAG" --notes-file dist/notes.md
 
+# --- homebrew tap ---------------------------------------------------------------
+# Regenerate the formula from the template with this release's real checksums and
+# push it, so `brew upgrade gpty` never lags the binaries. Skipped (loudly) if the
+# tap repo isn't reachable — the GitHub release is already published by here.
+TAP_REPO="${GPTY_TAP_REPO:-samdotson61/homebrew-tap}"
+sha_for() { awk -v f="./gpty_${VERSION}_$1.tar.gz" '$2 == f {print $1}' dist/checksums.txt; }
+
+if tapdir=$(mktemp -d) && git clone -q "https://github.com/$TAP_REPO.git" "$tapdir" 2>/dev/null; then
+    mkdir -p "$tapdir/Formula"
+    sed -e "s|@@VERSION@@|$VERSION|g" \
+        -e "s|@@SHA_DARWIN_ARM64@@|$(sha_for darwin_arm64)|" \
+        -e "s|@@SHA_DARWIN_AMD64@@|$(sha_for darwin_amd64)|" \
+        -e "s|@@SHA_LINUX_ARM64@@|$(sha_for linux_arm64)|" \
+        -e "s|@@SHA_LINUX_AMD64@@|$(sha_for linux_amd64)|" \
+        packaging/homebrew/gpty.rb.tmpl > "$tapdir/Formula/gpty.rb"
+    if [ -n "$(git -C "$tapdir" status --porcelain)" ]; then
+        git -C "$tapdir" add Formula/gpty.rb
+        git -C "$tapdir" commit -q -m "gpty $VERSION"
+        git -C "$tapdir" push -q
+        info "Homebrew tap updated: $TAP_REPO -> gpty $VERSION"
+    else
+        info "Homebrew tap already at $VERSION"
+    fi
+    rm -rf "$tapdir"
+else
+    info "WARNING: could not clone $TAP_REPO — formula NOT updated; \`brew\` users stay on the previous version until it is"
+fi
+
 info "Done: $(gh release view "$TAG" --json url --jq .url)"
