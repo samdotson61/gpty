@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -52,7 +53,10 @@ func freePort(t *testing.T) int {
 func buildGpty(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "gpty")
-	if os.Getenv("GOOS") == "windows" {
+	// runtime.GOOS, not os.Getenv("GOOS"): GOOS is a build-time constant and is
+	// normally unset in the environment, so the env lookup silently produced a
+	// suffix-less path on Windows and exec could not find the binary.
+	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
 	out, err := exec.Command("go", "build", "-o", bin, "../cmd/gpty").CombinedOutput()

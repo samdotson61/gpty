@@ -4,6 +4,15 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.7.3] — 2026-07-24
+
+### Fixed
+- **Test-only:** the new HTTP conformance test built its `gpty` subprocess
+  without an `.exe` suffix on Windows, because it branched on
+  `os.Getenv("GOOS")` — `GOOS` is a build-time constant and is normally unset
+  in the environment, so the check silently never fired. Now `runtime.GOOS`.
+  Shipped behaviour unchanged; the v0.7.1 binaries stand.
+
 ## [0.7.2] — 2026-07-24
 
 ### Fixed
