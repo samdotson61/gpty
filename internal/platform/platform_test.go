@@ -37,6 +37,16 @@ func ownDir(t *testing.T) string {
 	return filepath.Dir(exe)
 }
 
+// isolateResolution clears the env overrides so a test exercises PATH
+// resolution itself. Without this, any environment that sets GPTY_TMUX — the
+// Windows CI job does, pointing at the MSYS2 tmux — short-circuits Bin()
+// before PATH is ever consulted.
+func isolateResolution(t *testing.T) {
+	t.Helper()
+	t.Setenv("GPTY_TMUX", "")
+	t.Setenv("WMUX_TMUX", "")
+}
+
 func TestIsSelf(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -92,6 +102,7 @@ func TestIsAliasOfOurs(t *testing.T) {
 // rejected everything in that directory, so a brew-installed gpty resolved
 // tmux to the poison name and could not run at all.
 func TestHomebrewLayoutFindsRealTmux(t *testing.T) {
+	isolateResolution(t)
 	dir := ownDir(t)
 	real := writeFake(t, dir) // real tmux, same directory as the running binary
 	t.Setenv("PATH", dir)
@@ -103,6 +114,7 @@ func TestHomebrewLayoutFindsRealTmux(t *testing.T) {
 // The recursion guard still holds: a `tmux` that really IS our alias must be
 // skipped in favour of one further down PATH.
 func TestLookPathSkipsAlias(t *testing.T) {
+	isolateResolution(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a symlink; the copy form is covered by TestIsAliasOfOurs")
 	}
@@ -137,6 +149,7 @@ func TestLookPathSkipsAlias(t *testing.T) {
 // fallback must yield the poison name, never something that resolves back to
 // the alias.
 func TestFallbackBinRejectsAliasOnlyPath(t *testing.T) {
+	isolateResolution(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows fallback is an absolute MSYS2 path, not a PATH lookup")
 	}

@@ -4,6 +4,16 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.7.2] — 2026-07-24
+
+### Fixed
+- **Test-only:** `TestHomebrewLayoutFindsRealTmux` (added in 0.7.1) exercised
+  PATH resolution without clearing `$GPTY_TMUX`, so it failed on the Windows CI
+  job — which sets that variable to the MSYS2 tmux. `Bin()` was behaving
+  correctly (an explicit override wins over PATH); the test's expectation was
+  wrong. All three resolution tests now isolate the env first. Shipped
+  behaviour is unchanged, so the v0.7.1 binaries stand and no release was cut.
+
 ## [0.7.1] — 2026-07-24
 
 ### Fixed

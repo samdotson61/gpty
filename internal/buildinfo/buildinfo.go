@@ -5,4 +5,4 @@ package buildinfo
 // it at link time with -ldflags "-X .../internal/buildinfo.Version=vX.Y.Z".
 // Keep this in lockstep with CHANGELOG.md (semver: patch=fix, minor=feature,
 // major=breaking).
-var Version = "0.7.1"
+var Version = "0.7.2"
