@@ -10,7 +10,7 @@ minor=feature, major=breaking; one cohesive feature = one minor).
 - The Windows control dial resolved `script(1)` from `MSYS2_ROOT`/`C:\msys64`
   while `GPTY_TMUX` could point at a different msys installation — on the
   GitHub runner (which carries both the image's `C:\msys64` and the msys2
-  action's `D:\_temp\msys64`) the two cygwin runtimes shared one pty just
+  action's `D:\a\_temp\msys64`) the two cygwin runtimes shared one pty just
   long enough to pass the handshake before the channel collapsed, failing
   `TestCtlEngine` with "control channel closed". script(1) now resolves from
   the tmux binary's own directory first, so the pair always comes from the
