@@ -26,26 +26,56 @@ import (
 	"github.com/samdotson61/gpty/internal/engine"
 )
 
-// AllTools is the canonical tool-name list (compat lock §4.1).
-var AllTools = []string{
+// CoreTools is the frozen win-pty surface (compat lock §4.1).
+var CoreTools = []string{
 	"pty_spawn", "pty_send", "pty_snapshot", "pty_wait_for", "pty_list", "pty_kill",
 	"pane_split", "pane_send", "pane_capture", "pane_list", "pane_info",
 	"pane_kill", "pane_select", "pane_resize", "pane_layout",
 }
 
+// CrewTools is the opt-in orchestration surface ported from upstream
+// agent-pty: mesh (M6) plus the Phase-2 crew (Prime Directive, Red Alert,
+// Bones). Names mirror upstream's MCP tools exactly.
+var CrewTools = []string{
+	"mesh_send_with_done", "mesh_snapshot_since", "mesh_detect_blocked", "mesh_pipe",
+	"mesh_subscribe_create", "mesh_subscribe_next", "mesh_subscribe_close",
+	"mesh_lifecycle_create", "mesh_lifecycle_next", "mesh_lifecycle_close",
+	"prime_directive_resolve", "prime_directive_enforce",
+	"red_alert_check", "red_alert_notify", "red_alert_notify_start", "red_alert_notify_stop",
+	"bones_examine", "bones_triage",
+}
+
+// AllTools is the canonical tool-name list: the frozen core plus the crew.
+var AllTools = append(append([]string{}, CoreTools...), CrewTools...)
+
 // ParseToolFilter parses a --tools spec into a registration filter. ""/"all"
-// exposes every tool (nil filter); "session" only the pty_* suite; "panes"
-// only the pane_* suite; anything else is a comma-separated list of exact
-// tool names. Unknown names are an error — a typo must not silently drop a
-// tool.
+// exposes every tool (nil filter); "core" the frozen pty_*+pane_* set;
+// "session" only the pty_* suite; "panes" only the pane_* suite; "mesh" the
+// mesh_* suite; "crew" every orchestration tool (mesh + prime_directive +
+// red_alert + bones); anything else is a comma-separated list of exact tool
+// names. Unknown names are an error — a typo must not silently drop a tool.
 func ParseToolFilter(spec string) (func(string) bool, error) {
 	switch spec {
 	case "", "all":
 		return nil, nil
+	case "core":
+		core := map[string]bool{}
+		for _, n := range CoreTools {
+			core[n] = true
+		}
+		return func(n string) bool { return core[n] }, nil
 	case "session":
 		return func(n string) bool { return strings.HasPrefix(n, "pty_") }, nil
 	case "panes":
 		return func(n string) bool { return strings.HasPrefix(n, "pane_") }, nil
+	case "mesh":
+		return func(n string) bool { return strings.HasPrefix(n, "mesh_") }, nil
+	case "crew":
+		crewSet := map[string]bool{}
+		for _, n := range CrewTools {
+			crewSet[n] = true
+		}
+		return func(n string) bool { return crewSet[n] }, nil
 	}
 	known := map[string]bool{}
 	for _, n := range AllTools {
@@ -58,7 +88,7 @@ func ParseToolFilter(spec string) (func(string) bool, error) {
 			continue
 		}
 		if !known[n] {
-			return nil, fmt.Errorf("unknown tool %q in --tools; presets all|session|panes, or names: %s",
+			return nil, fmt.Errorf("unknown tool %q in --tools; presets all|core|session|panes|mesh|crew, or names: %s",
 				n, strings.Join(AllTools, ", "))
 		}
 		want[n] = true
@@ -74,6 +104,7 @@ func ParseToolFilter(spec string) (func(string) bool, error) {
 func NewServer(eng engine.Engine, allow func(string) bool) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "gpty", Version: buildinfo.Version}, nil)
 	register(s, eng, allow)
+	registerCrew(s, eng, allow)
 	return s
 }
 

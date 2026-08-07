@@ -42,6 +42,21 @@ func TestParseToolFilter(t *testing.T) {
 		t.Errorf("panes preset: got %d tools, err %v; want the 9 pane_* tools", count(allow), err)
 	}
 
+	allow, err = ParseToolFilter("core")
+	if err != nil || count(allow) != len(CoreTools) || !allow("pty_spawn") || !allow("pane_split") || allow("mesh_pipe") {
+		t.Errorf("core preset: got %d tools, err %v; want the %d frozen core tools", count(allow), err, len(CoreTools))
+	}
+
+	allow, err = ParseToolFilter("mesh")
+	if err != nil || count(allow) != 10 || !allow("mesh_send_with_done") || allow("bones_examine") || allow("pty_spawn") {
+		t.Errorf("mesh preset: got %d tools, err %v; want the 10 mesh_* tools", count(allow), err)
+	}
+
+	allow, err = ParseToolFilter("crew")
+	if err != nil || count(allow) != len(CrewTools) || !allow("mesh_send_with_done") || !allow("bones_examine") || allow("pty_spawn") {
+		t.Errorf("crew preset: got %d tools, err %v; want the %d crew tools", count(allow), err, len(CrewTools))
+	}
+
 	allow, err = ParseToolFilter("pty_send, pane_capture")
 	if err != nil || count(allow) != 2 || !allow("pty_send") || !allow("pane_capture") {
 		t.Errorf("name list: got %d tools, err %v; want exactly the 2 named", count(allow), err)
@@ -119,8 +134,10 @@ func TestToolBudget(t *testing.T) {
 		}
 		total += len(raw)
 	}
-	if total > 5000 {
-		t.Errorf("serialized tool definitions total %d chars (budget 5000)", total)
+	// 5000 covered the 15 core tools; the 18 crew tools ride the same
+	// per-tool discipline, so the ceiling scales with the surface.
+	if total > 12000 {
+		t.Errorf("serialized tool definitions total %d chars (budget 12000)", total)
 	}
 	t.Logf("tool definitions: %d tools, %d chars total", len(tools), total)
 }

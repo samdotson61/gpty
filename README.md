@@ -103,19 +103,31 @@ accept all offers non-interactively. `gpty doctor` verifies the result.
 claude mcp add gpty -- gpty mcp
 ```
 
-Tools (names preserved from win-pty, so existing setups upgrade by changing only
-the command): `pty_spawn`, `pty_send`, `pty_snapshot`, `pty_wait_for`,
-`pty_list`, `pty_kill`, and the pane suite `pane_split`, `pane_send`,
-`pane_capture`, `pane_list`, `pane_info`, `pane_kill`, `pane_select`,
-`pane_resize`, `pane_layout`.
+Core tools (names preserved from win-pty, so existing setups upgrade by
+changing only the command): `pty_spawn`, `pty_send`, `pty_snapshot`,
+`pty_wait_for`, `pty_list`, `pty_kill`, and the pane suite `pane_split`,
+`pane_send`, `pane_capture`, `pane_list`, `pane_info`, `pane_kill`,
+`pane_select`, `pane_resize`, `pane_layout`.
+
+Orchestration tools (ported from upstream agent-pty's mesh + crew layers, for
+one agent driving N sub-agents in other sessions — see
+[docs/orchestration.md](docs/orchestration.md)): the mesh primitives
+`mesh_send_with_done`, `mesh_snapshot_since`, `mesh_detect_blocked`,
+`mesh_pipe`, `mesh_subscribe_*`, `mesh_lifecycle_*`; the policy actuator
+`prime_directive_resolve`/`_enforce`; the escalation suite `red_alert_check`,
+`red_alert_notify`, `red_alert_notify_start`/`_stop`; and the read-only
+health checks `bones_examine`, `bones_triage`.
 
 Tool definitions are kept terse — they sit in the agent's context window for
-the whole session (~1,130 tokens for all 15). To spend less, expose only what
+the whole session (~2,650 tokens for all 33). To spend less, expose only what
 the agent needs with `--tools`:
 
 ```sh
+claude mcp add gpty -- gpty mcp --tools core      # the frozen pty_*+pane_* set
 claude mcp add gpty -- gpty mcp --tools session   # pty_* only  (~430 tokens)
 claude mcp add gpty -- gpty mcp --tools panes     # pane_* only (~710 tokens)
+claude mcp add gpty -- gpty mcp --tools mesh      # orchestration primitives only
+claude mcp add gpty -- gpty mcp --tools crew      # mesh + prime_directive + red_alert + bones
 gpty mcp --tools pty_send,pty_snapshot,pane_split # or an exact list
 ```
 

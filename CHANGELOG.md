@@ -4,6 +4,46 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.8.0] — 2026-08-06
+
+### Added
+- **Orchestration layer, phases 1–2 of the upstream agent-pty port** (mesh M6
+  plus the Red Alert / Bones / Prime Directive crew modules from M7-M17). 18
+  new MCP tools in their own namespaces; the core `pty_*`/`pane_*` surface is
+  untouched and can be pinned with the new `--tools core` preset (`mesh` and
+  `crew` presets added alongside). New packages `internal/mesh` and
+  `internal/crew`, both engine-agnostic: they ride whichever engine (exec or
+  control-mode resident) serves the session.
+  - **Mesh primitives** — `mesh_send_with_done` (sentinel-bounded
+    prompt/reply round-trip for driving another LLM CLI), `mesh_snapshot_since`
+    (incremental read past an anchor), `mesh_detect_blocked` (heuristic
+    stuck-on-prompt hint), `mesh_pipe` (pane-to-pane content transfer that
+    never surfaces in the orchestrator's context), `mesh_subscribe_*`
+    (pattern-match push subscriptions), `mesh_lifecycle_*` (born/died/idle/busy
+    event streams).
+  - **Prime Directive** — policy actuator for blocked panes
+    (`prime_directive_resolve`/`_enforce`, conservative and permissive
+    policies). Hard-coded invariant: a secrets prompt (password/passphrase/
+    2FA/verification) is ALWAYS escalated, never auto-answered.
+  - **Red Alert** — fleet escalation to the human (`red_alert_check`,
+    `red_alert_notify`, `red_alert_notify_start`/`_stop`): fires a
+    notification on a NEW deadlock or dead-pane alert, deduped, read-only on
+    panes.
+  - **Bones** — read-only health pathology (`bones_examine`, `bones_triage`):
+    errors on screen, thrashing loops, hung-mid-task detection, sickest-first
+    triage. Never sends a keystroke.
+- 55 new unit tests (fake-terminal ports of the upstream acceptance suites)
+  plus a live tmux smoke (`go test -tags live -run Live ./internal/mesh`)
+  that, unlike the conformance suite, never calls `kill-server`.
+
+### Fixed (relative to the upstream design)
+- `mesh_send_with_done` in upstream can return garbage when the sent prompt
+  itself contains the done marker (the usual convention — "End your reply
+  with <<END>>"): the marker's on-screen ECHO satisfies the wait before the
+  sub-agent has produced any output. The gpty port only completes on a marker
+  occurrence AFTER the echoed prompt line, falling back to upstream's
+  best-effort extraction on timeout. Caught by the live smoke on real tmux.
+
 ## [0.7.3] — 2026-07-24
 
 ### Fixed

@@ -129,7 +129,9 @@ const usage = `gpty — agent terminal control over tmux (Windows / macOS / Linu
  Servers (for agents):
   gpty mcp [--no-ctl] [--tools T]      MCP server over stdio (local agents)
   gpty serve [--addr H:P] [--token T] [--tools T]   MCP over streamable HTTP (cloud agents)
-    --tools: all (default) | session (pty_* only) | panes (pane_* only) |
+    --tools: all (default) | core (pty_*+pane_*) | session (pty_* only) |
+             panes (pane_* only) | mesh (orchestration primitives) |
+             crew (mesh + prime_directive + red_alert + bones) |
              comma-separated tool names — fewer tools = less agent context
 
  Sessions (background, addressable by name):
