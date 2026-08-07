@@ -33,12 +33,25 @@ import (
 // Verified live before implementation: display-message round-trips through
 // script+-CC where -C gets nothing.
 func dialCmd() *exec.Cmd {
-	root := os.Getenv("MSYS2_ROOT")
-	if root == "" {
-		root = `C:\msys64`
+	// script(1) must come from the SAME msys installation as the tmux we
+	// dial: mixing two cygwin runtimes (e.g. the GitHub runner image's
+	// C:\msys64 and the msys2 action's D:\a\_temp\msys64) gives script a pty
+	// the other runtime only half-understands — the channel comes up and
+	// then collapses. Prefer tmux's own bin dir, then the explicit root,
+	// then the default install.
+	candidates := []string{filepath.Join(filepath.Dir(platform.Bin()), "script.exe")}
+	if root := os.Getenv("MSYS2_ROOT"); root != "" {
+		candidates = append(candidates, filepath.Join(root, `usr\bin\script.exe`))
 	}
-	scriptExe := filepath.Join(root, `usr\bin\script.exe`)
-	if fi, err := os.Stat(scriptExe); err != nil || !fi.Mode().IsRegular() {
+	candidates = append(candidates, `C:\msys64\usr\bin\script.exe`)
+	scriptExe := ""
+	for _, cand := range candidates {
+		if fi, err := os.Stat(cand); err == nil && fi.Mode().IsRegular() {
+			scriptExe = cand
+			break
+		}
+	}
+	if scriptExe == "" {
 		// No script(1) on this install: dial -C directly. On runtimes without
 		// fd passing the handshake fails and exec takes over, same as before.
 		cmd := exec.Command(platform.Bin(),

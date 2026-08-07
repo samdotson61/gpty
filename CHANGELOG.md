@@ -4,6 +4,18 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.9.1] — 2026-08-06
+
+### Fixed
+- The Windows control dial resolved `script(1)` from `MSYS2_ROOT`/`C:\msys64`
+  while `GPTY_TMUX` could point at a different msys installation — on the
+  GitHub runner (which carries both the image's `C:\msys64` and the msys2
+  action's `D:\_temp\msys64`) the two cygwin runtimes shared one pty just
+  long enough to pass the handshake before the channel collapsed, failing
+  `TestCtlEngine` with "control channel closed". script(1) now resolves from
+  the tmux binary's own directory first, so the pair always comes from the
+  same runtime.
+
 ## [0.9.0] — 2026-08-06
 
 ### Added
