@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/samdotson61/gpty/internal/keys"
-	"github.com/samdotson61/gpty/internal/platform"
 	"github.com/samdotson61/gpty/internal/session"
 )
 
@@ -98,10 +97,7 @@ var Debug io.Writer
 // Dial starts a control-mode client and returns once the startup handshake has
 // been drained (so no command can race the unsolicited startup frames).
 func Dial() (*Client, error) {
-	bin := platform.Bin()
-	args := []string{"-u", "-C", "new-session", "-A", "-s", ctlSession, "-x", "80", "-y", "24"}
-	cmd := exec.Command(bin, args...)
-	cmd.Env = platform.Env(false) // noglob-safe on Windows; control mode needs no pty
+	cmd := dialCmd() // per-OS: plain -C on Unix, script(1)+-CC on Windows
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -148,10 +144,19 @@ func scan(r io.Reader, out chan<- string) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024) // allow wide captures
 	for sc.Scan() {
-		if Debug != nil {
-			fmt.Fprintf(Debug, "ctl< %s\n", sc.Text())
+		line := sc.Text()
+		// -CC (the Windows channel) is a pty stream: CRLF line endings, a DCS
+		// intro glued to the first %begin, and a lone ST on exit. Normalizing
+		// here keeps the protocol reader identical across both channels.
+		line = strings.TrimRight(line, "\r")
+		line = strings.TrimPrefix(line, "\x1bP1000p")
+		if line == "\x1b\\" {
+			continue
 		}
-		out <- sc.Text()
+		if Debug != nil {
+			fmt.Fprintf(Debug, "ctl< %s\n", line)
+		}
+		out <- line
 	}
 	close(out)
 }
@@ -280,6 +285,21 @@ func (c *Client) Close() error {
 	c.closeMu.Lock()
 	defer c.closeMu.Unlock()
 	if c.stdin != nil {
+		// Detach explicitly before tearing the process down. On Windows the
+		// dialed process is script(1) and the tmux -CC client is its child on
+		// a cygwin pty — killing script alone orphans the client, which stays
+		// ATTACHED server-side and (being a control client that no longer
+		// drains) drags the server's %output flow for every other client.
+		// Nine such zombies accumulated during live-testing before this line
+		// existed. detach-client makes the client exit itself; the kill below
+		// is then just cleanup.
+		_, _ = io.WriteString(c.stdin, "detach-client\n")
+		if c.closed != nil {
+			select {
+			case <-c.closed: // reader saw EOF: client really exited
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
 		_ = c.stdin.Close()
 	}
 	if c.cmd != nil && c.cmd.Process != nil {

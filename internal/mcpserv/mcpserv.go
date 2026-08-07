@@ -81,14 +81,36 @@ func ParseToolFilter(spec string) (func(string) bool, error) {
 	for _, n := range AllTools {
 		known[n] = true
 	}
+	// A comma-separated spec may mix presets and exact names (e.g.
+	// "panes,crew" = the pane suite plus every orchestration tool).
+	preset := map[string]func(string) bool{
+		"session": func(n string) bool { return strings.HasPrefix(n, "pty_") },
+		"panes":   func(n string) bool { return strings.HasPrefix(n, "pane_") },
+		"mesh":    func(n string) bool { return strings.HasPrefix(n, "mesh_") },
+	}
+	preset["core"] = func(n string) bool { return preset["session"](n) || preset["panes"](n) }
+	crewSet := map[string]bool{}
+	for _, n := range CrewTools {
+		crewSet[n] = true
+	}
+	preset["crew"] = func(n string) bool { return crewSet[n] }
+
 	want := map[string]bool{}
 	for _, n := range strings.Split(spec, ",") {
 		n = strings.TrimSpace(n)
 		if n == "" {
 			continue
 		}
+		if match, ok := preset[n]; ok {
+			for _, tool := range AllTools {
+				if match(tool) {
+					want[tool] = true
+				}
+			}
+			continue
+		}
 		if !known[n] {
-			return nil, fmt.Errorf("unknown tool %q in --tools; presets all|core|session|panes|mesh|crew, or names: %s",
+			return nil, fmt.Errorf("unknown tool %q in --tools; presets all|core|session|panes|mesh|crew (combinable, e.g. panes,crew), or names: %s",
 				n, strings.Join(AllTools, ", "))
 		}
 		want[n] = true

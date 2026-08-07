@@ -4,6 +4,37 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.9.0] — 2026-08-06
+
+### Added
+- **Control mode works on Windows — the build-plan §8 Phase 4 exit gate is
+  closed.** Root cause of the never-answering channel: the msys runtime does
+  not deliver SCM_RIGHTS fd-passing over its AF_UNIX emulation, so a plain
+  `tmux -C` client identifies STDIN/STDOUT as -1 and the server writes every
+  control line into the void (diagnosed live with `tmux -vv` server logs; Go
+  pipes and cygwin shell pipes fail identically). The tty NAME does cross the
+  socket, so the new Windows dial (internal/ctl/dial_windows.go) runs `tmux
+  -CC` — control mode over the client tty — inside a cygwin pty allocated by
+  `script(1)`, talking to the pty master through ordinary pipes. The protocol
+  reader normalizes the -CC framing (CRLF, the P1000p DCS intro, the ST
+  terminator), and Unix keeps the direct `-C` dial. Validated on hardware:
+  dial ~1s, §6 wait_for reaction median 98-99ms (vs the 200ms exec poll it
+  replaces; Unix stays ~1ms), TestCtl conformance green twice consecutively.
+- **`--tools` specs now combine presets and names** — e.g. `--tools
+  panes,crew` exposes the pane suite plus the whole orchestration layer.
+
+### Fixed
+- `ctl.Client.Close` now sends `detach-client` before killing the dialed
+  process. On Windows the process is script(1) and the tmux -CC client is its
+  child on a pty — killing script alone orphaned the client, which stayed
+  attached server-side and dragged %output delivery for every later client
+  (nine such zombies accumulated during validation; the flaky 240ms wait
+  reactions disappeared with the cleanup).
+- Conformance latency bounds are now OS-aware: the Windows channel's honest
+  push latency (~90-100ms through the script pty) gets a 250ms bound where
+  Unix keeps 100ms, and the cross-client round-trip (which deliberately
+  includes the trigger's cygwin exec tax) gets 600ms vs 150ms.
+
 ## [0.8.2] — 2026-08-06
 
 ### Added

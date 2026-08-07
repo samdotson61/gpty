@@ -1,12 +1,22 @@
 # Windows control-mode validation — the one remaining hardware step
 
-**Status:** open. This is the build-plan §8 Phase 4 exit gate: everything else
-about gpty on Windows is CI-verified (the exec engine passes the full live
-conformance suite against MSYS2 tmux), but the **control-mode channel** — the
-resident accelerator — has never come up on Windows: on the CI runner,
-`tmux -C` accepts the spawn and then never answers the handshake (silent
-pipes). Until it's validated on real hardware, gpty on Windows quietly runs on
-the exec engine (correct, just slower per call).
+**Status: CLOSED — validated on real Windows hardware 2026-08-06 (gpty
+0.9.0).** Root cause of the silent pipes, found with `tmux -vv` server logs:
+the msys runtime does not deliver SCM_RIGHTS fd-passing over its AF_UNIX
+emulation, so a `tmux -C` client identifies `STDIN`/`STDOUT` as `-1` and the
+server writes every control line into a bufferevent on fd -1 — on Go pipes
+and cygwin shell pipes alike. What does cross the socket is the tty NAME
+(the server opens the client terminal by path), which is why interactive
+attach always worked. The fix (internal/ctl/dial_windows.go): dial `tmux
+-CC` — control mode over the client tty — inside a real cygwin pty allocated
+by `script(1)`, and talk to the pty master through script's ordinary pipe
+stdio. Validated numbers on the Windows box: dial ~1s, §6 wait_for reaction
+median **98-99ms** (vs the 200ms exec poll cadence; Unix direct pipes remain
+~1ms), full `TestCtl` conformance green twice consecutively, no leaked
+clients (Close now sends `detach-client` first — killing script alone
+orphans the -CC client attached server-side).
+
+The original hunt instructions are kept below for archaeology.
 
 Everything below is copy-paste; total time ~10 minutes on the Windows box.
 

@@ -57,6 +57,16 @@ func TestParseToolFilter(t *testing.T) {
 		t.Errorf("crew preset: got %d tools, err %v; want the %d crew tools", count(allow), err, len(CrewTools))
 	}
 
+	allow, err = ParseToolFilter("panes,crew")
+	if err != nil || count(allow) != 9+len(CrewTools) || !allow("pane_split") || !allow("mesh_send_with_done") || !allow("bones_examine") || allow("pty_spawn") {
+		t.Errorf("panes,crew union: got %d tools, err %v; want the 9 pane_* + %d crew tools", count(allow), err, len(CrewTools))
+	}
+
+	allow, err = ParseToolFilter("session,pane_split")
+	if err != nil || count(allow) != 7 || !allow("pty_send") || !allow("pane_split") || allow("pane_kill") {
+		t.Errorf("preset+name mix: got %d tools, err %v; want 6 pty_* + pane_split", count(allow), err)
+	}
+
 	allow, err = ParseToolFilter("pty_send, pane_capture")
 	if err != nil || count(allow) != 2 || !allow("pty_send") || !allow("pane_capture") {
 		t.Errorf("name list: got %d tools, err %v; want exactly the 2 named", count(allow), err)
