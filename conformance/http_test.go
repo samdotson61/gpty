@@ -17,6 +17,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/samdotson61/gpty/internal/mcpserv"
 	"github.com/samdotson61/gpty/internal/session"
 )
 
@@ -116,8 +117,8 @@ func TestServeHTTPEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	if len(tools.Tools) != 15 {
-		t.Errorf("got %d tools over HTTP, want 15", len(tools.Tools))
+	if len(tools.Tools) != len(mcpserv.AllTools) {
+		t.Errorf("got %d tools over HTTP, want %d", len(tools.Tools), len(mcpserv.AllTools))
 	}
 
 	call := func(t *testing.T, name string, args map[string]any) string {

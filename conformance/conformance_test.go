@@ -35,8 +35,15 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "skipping conformance: tmux not runnable at %q (%v)\n", platform.Bin(), err)
 		os.Exit(0)
 	}
+	// kill-server is safe on a CI runner but destroys every live session on a
+	// dev box (this cleanup runs even under -run filtering). Only tear down a
+	// server this suite itself started; a pre-existing server is someone's
+	// live work and per-test Cleanups already remove our own sessions.
+	preexisting := tmux.ServerUp()
 	code := m.Run()
-	_ = exec.Command(platform.Bin(), "kill-server").Run() // best-effort cleanup
+	if !preexisting {
+		_ = exec.Command(platform.Bin(), "kill-server").Run() // best-effort cleanup
+	}
 	os.Exit(code)
 }
 

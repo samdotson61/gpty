@@ -4,6 +4,21 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.8.1] — 2026-08-06
+
+### Fixed
+- **Test-only:** the 0.8.0 CI run failed on all three OSes because
+  `TestServeHTTPEndToEnd` asserted exactly 15 tools over HTTP; the crew port
+  registers 33. It now asserts against `mcpserv.AllTools`. Shipped behaviour
+  unchanged.
+- **The conformance suite's `kill-server` cleanup ran unconditionally on
+  exit** — even when `-run` scoped the suite to a single test — destroying
+  every live session on a dev box (hit live on this one; the handoff doc's
+  "`-run TestCtl` scopes it" advice was wrong about the cleanup). TestMain
+  now tears down only a server it started itself: a pre-existing server is
+  someone's live work, and per-test Cleanups already remove the suite's own
+  sessions.
+
 ## [0.8.0] — 2026-08-06
 
 ### Added

@@ -42,6 +42,10 @@ gpty doctor --ctl-debug
 go test -tags live -count=1 -v -run 'TestCtl' ./conformance/
 ```
 
+(Since 0.8.1 the suite's exit cleanup only kill-servers a tmux server it
+started itself, so this is safe on a box with live sessions — before that,
+TestMain killed the server unconditionally, `-run` filter or not.)
+
 All green (not skipped) means the channel is validated. Then close the gate:
 
 1. Remove the two Windows `t.Skipf` blocks in `conformance/conformance_test.go`
