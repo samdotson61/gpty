@@ -4,6 +4,18 @@ All notable changes to gpty are documented here. Versioning is semver in
 lockstep with `internal/buildinfo.Version` and the docs vault (patch=fix,
 minor=feature, major=breaking; one cohesive feature = one minor).
 
+## [0.8.2] — 2026-08-06
+
+### Added
+- **Test-only:** a live end-to-end crew scenario (`go test -tags live -run
+  LiveCrew ./internal/mcpserv`) driving the full Phase 1-2 surface through a
+  real MCP client against real tmux panes: a python REPL answered via
+  `mesh_send_with_done`, a real y/n prompt detected and auto-approved by the
+  permissive Prime Directive, a password prompt escalated (with proof no
+  keystroke landed), Red Alert deadlock detection, Bones triage, pane-to-pane
+  pipe, subscriptions and lifecycle events. Kill-server-free, safe on a live
+  box.
+
 ## [0.8.1] — 2026-08-06
 
 ### Fixed
